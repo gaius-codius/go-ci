@@ -1,0 +1,13 @@
+# Shared Go hooks, loaded through lefthook remotes (see README.md).
+# Needs scripts/lint-packages.sh in the project (copy baseline/scripts/lint-packages.sh).
+pre-commit:
+  jobs:
+    - name: fmt and lint staged packages
+      glob: "*.go"
+      run: ./scripts/lint-packages.sh {staged_files}
+      stage_fixed: true
+
+pre-push:
+  jobs:
+    - name: test
+      run: mise exec -- go test ./...

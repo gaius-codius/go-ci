@@ -1,0 +1,26 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  self-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Test the govulncheck gate
+        run: ./tests/test-govulncheck.sh
+
+      - name: Shellcheck
+        run: shellcheck -S warning baseline/scripts/*.sh actions/*/*.sh tests/*.sh

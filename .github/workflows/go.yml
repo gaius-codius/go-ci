@@ -1,0 +1,109 @@
+name: go
+
+# Shared Go checks. Projects call this from their own ci.yml:
+#   jobs:
+#     go:
+#       uses: gaius-codius/go-ci/.github/workflows/go.yml@v1
+#       with:
+#         runs-on: '["self-hosted","linux","x64","<project>"]'
+#         build: ./cmd/<project>/
+# Tools come from the project's mise.toml (Go, golangci-lint, govulncheck, jq).
+
+on:
+  workflow_call:
+    inputs:
+      runs-on:
+        description: Runner labels as a JSON list, for example '["self-hosted","linux","x64","vigiles"]' or '["ubuntu-latest"]'.
+        type: string
+        required: true
+      build:
+        description: Package to build, for example ./cmd/vigiles/. Empty builds ./... instead.
+        type: string
+        default: ""
+      fuzz:
+        description: Fuzz targets, one "<package> <FuzzName>" per line. Empty skips fuzzing.
+        type: string
+        default: ""
+      fuzz-time:
+        description: How long each fuzz target runs.
+        type: string
+        default: 5s
+      govulncheck-allowlist:
+        description: Allowlist path, relative to the repository root.
+        type: string
+        default: scripts/govulncheck-allow.txt
+      mise-cache:
+        description: Let jdx/mise-action cache installs. Self-hosted runners keep them on disk, so the default is off.
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: test-vet-build
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Install pinned tools (mise.toml)
+        uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
+        with:
+          cache: ${{ inputs.mise-cache }}
+
+      - name: Check pinned Go version
+        run: |
+          test "$(go env GOVERSION)" = "go$(mise current go)"
+          # go.mod's toolchain line must match mise.toml, so builds without mise use the same Go.
+          test "$(go mod edit -json | jq -r .Toolchain)" = "go$(mise current go)"
+
+      - name: Compare with the go-ci baseline
+        uses: gaius-codius/go-ci/actions/baseline-drift@v1
+
+      - name: Run full test suite
+        run: go test -shuffle=on -coverprofile=coverage.out ./...
+
+      - name: Report coverage
+        run: |
+          go tool cover -func=coverage.out | tail -n 1
+          {
+            echo "### Test coverage"
+            echo
+            echo '```'
+            go tool cover -func=coverage.out | tail -n 1
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Run race detector
+        run: go test -race -shuffle=on ./...
+
+      - name: Fuzz untrusted-input parsers
+        if: inputs.fuzz != ''
+        env:
+          FUZZ_TARGETS: ${{ inputs.fuzz }}
+          FUZZ_TIME: ${{ inputs.fuzz-time }}
+        run: |
+          while read -r pkg target; do
+            [[ -n "${pkg}" ]] || continue
+            go test "${pkg}" -run '^$' -fuzz "^${target}\$" -fuzztime="${FUZZ_TIME}"
+          done <<<"${FUZZ_TARGETS}"
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Lint
+        run: golangci-lint run ./...
+
+      - name: Check for reachable vulnerabilities
+        uses: gaius-codius/go-ci/actions/govulncheck@v1
+        with:
+          allowlist: ${{ inputs.govulncheck-allowlist }}
+
+      - name: Build
+        env:
+          BUILD: ${{ inputs.build }}
+        run: go build "${BUILD:-./...}"
