@@ -102,7 +102,7 @@ jobs:
           done <<<"${FUZZ_TARGETS}"
 
       - name: Run go vet
-        run: go vet ./...
+        run: go vet ./... && exit 1 # deliberately broken
 
       - name: Lint
         run: golangci-lint run ./...
