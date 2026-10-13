@@ -7,7 +7,10 @@
   description: 'gaius-codius Go projects: weekly, grouped updates for Go modules, Actions, mise tools, the Go toolchain and go-ci',
   extends: [
     'config:recommended',
+    ':semanticCommits',
     ':semanticCommitTypeAll(chore)',
+    // Indirect go.mod dependencies get a PR only to fix a vulnerability.
+    'security:gomodIndirectSecurityUpdates',
     'helpers:pinGitHubActionDigests',
     'schedule:weekly',
   ],
@@ -49,9 +52,10 @@
       groupName: 'GitHub Actions',
     },
     {
-      description: 'mise tools: one PR',
+      description: 'mise tools: one PR, majors included',
       matchManagers: ['mise'],
       groupName: 'mise tools',
+      separateMajorMinor: false,
     },
     {
       // CI checks that mise's Go is the Go that runs and that go.mod's
