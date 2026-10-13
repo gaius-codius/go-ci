@@ -8,4 +8,4 @@ runs:
   steps:
     - name: Compare with the go-ci baseline
       shell: bash
-      run: "${GITHUB_ACTION_PATH}/drift.sh"
+      run: '"${GITHUB_ACTION_PATH}/drift.sh"'

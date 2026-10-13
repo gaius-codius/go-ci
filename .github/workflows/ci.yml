@@ -5,6 +5,8 @@ on:
   push:
     branches:
       - main
+    tags:
+      - 'v1.*'
   workflow_dispatch:
 
 permissions:
@@ -22,5 +24,17 @@ jobs:
       - name: Test the govulncheck gate
         run: ./tests/test-govulncheck.sh
 
+      - name: Test the baseline drift check
+        run: ./tests/test-drift.sh
+
       - name: Shellcheck
         run: shellcheck -S warning baseline/scripts/*.sh actions/*/*.sh tests/*.sh
+
+      - name: Actionlint
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -color
+
+      - name: Release self-references match the tag
+        if: startsWith(github.ref, 'refs/tags/v1.')
+        run: |
+          # go.yml must call its own actions at the release being tagged.
+          test "$(grep -c "gaius-codius/go-ci/actions/.*@${GITHUB_REF_NAME} " .github/workflows/go.yml)" = 2

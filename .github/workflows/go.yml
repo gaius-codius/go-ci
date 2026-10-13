@@ -3,7 +3,7 @@ name: go
 # Shared Go checks. Projects call this from their own ci.yml:
 #   jobs:
 #     go:
-#       uses: gaius-codius/go-ci/.github/workflows/go.yml@v1
+#       uses: gaius-codius/go-ci/.github/workflows/go.yml@<release commit SHA> # v1.x.y
 #       with:
 #         runs-on: '["self-hosted","linux","x64","<project>"]'
 #         build: ./cmd/<project>/
@@ -62,7 +62,7 @@ jobs:
           test "$(go mod edit -json | jq -r .Toolchain)" = "go$(mise current go)"
 
       - name: Compare with the go-ci baseline
-        uses: gaius-codius/go-ci/actions/baseline-drift@v1
+        uses: gaius-codius/go-ci/actions/baseline-drift@v1.0.1 # this release; see README "Changing go-ci"
 
       - name: Run full test suite
         run: go test -shuffle=on -coverprofile=coverage.out ./...
@@ -87,8 +87,17 @@ jobs:
           FUZZ_TARGETS: ${{ inputs.fuzz }}
           FUZZ_TIME: ${{ inputs.fuzz-time }}
         run: |
-          while read -r pkg target; do
+          while read -r pkg target extra; do
             [[ -n "${pkg}" ]] || continue
+            if [[ -z "${target}" || -n "${extra}" ]]; then
+              echo "::error::fuzz lines are '<package> <FuzzName>', got: ${pkg} ${target} ${extra}"
+              exit 1
+            fi
+            # go test passes when -fuzz matches nothing, so check the target exists first.
+            if ! go test "${pkg}" -list "^${target}\$" | grep -qx "${target}"; then
+              echo "::error::no fuzz target ${target} in ${pkg}"
+              exit 1
+            fi
             go test "${pkg}" -run '^$' -fuzz "^${target}\$" -fuzztime="${FUZZ_TIME}"
           done <<<"${FUZZ_TARGETS}"
 
@@ -99,7 +108,7 @@ jobs:
         run: golangci-lint run ./...
 
       - name: Check for reachable vulnerabilities
-        uses: gaius-codius/go-ci/actions/govulncheck@v1
+        uses: gaius-codius/go-ci/actions/govulncheck@v1.0.1 # this release
         with:
           allowlist: ${{ inputs.govulncheck-allowlist }}
 

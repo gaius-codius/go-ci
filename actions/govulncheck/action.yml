@@ -14,4 +14,4 @@ runs:
       env:
         GOVULNCHECK_ROOT: ${{ github.workspace }}
         GOVULNCHECK_ALLOW: ${{ github.workspace }}/${{ inputs.allowlist }}
-      run: "${GITHUB_ACTION_PATH}/../../baseline/scripts/govulncheck.sh"
+      run: '"${GITHUB_ACTION_PATH}/../../baseline/scripts/govulncheck.sh"'

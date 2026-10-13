@@ -1,6 +1,6 @@
 # go-ci
 
-Shared quality setup for gaius-codius Go projects: one reusable CI workflow, a vulnerability gate, a baseline golangci-lint config, shared git hooks, and templates. Projects pin a tag (`@v1`) and keep their own allowlist and release jobs.
+Shared quality setup for gaius-codius Go projects: one reusable CI workflow, a vulnerability gate, a baseline golangci-lint config, shared git hooks, and templates. Projects pin a release by commit SHA and keep their own allowlist and release jobs. The Go module must be at the repository root.
 
 | Piece | Where | How a project uses it |
 |---|---|---|
@@ -74,7 +74,7 @@ Run these from the project's root. Replace `<project>` with the repo name and mo
 
    jobs:
      verify:
-       uses: gaius-codius/go-ci/.github/workflows/go.yml@v1
+       uses: gaius-codius/go-ci/.github/workflows/go.yml@<release commit SHA> # v1.x.y
        with:
          runs-on: '["self-hosted","linux","x64","<project>"]'
          build: ./cmd/<project>/
@@ -82,7 +82,7 @@ Run these from the project's root. Replace `<project>` with the repo name and mo
            ./internal/config FuzzLoad
    ```
 
-   The status check is then named `verify / test-vet-build`. Release jobs stay in the project and can keep `needs: verify`. Steps that only one project needs (an extra package, a service) go in a separate job in the project's `ci.yml`.
+   Pin the full commit SHA of a release tag (`git ls-remote --tags https://github.com/gaius-codius/go-ci 'v1.*'`), as for any third-party action: the workflow runs on your runner with your checkout. Dependabot's `github-actions` updates keep the pin current. The status check is then named `verify / test-vet-build`. Release jobs stay in the project and can keep `needs: verify`. Steps that only one project needs (an extra package, a service) go in a separate job in the project's `ci.yml`.
 
 4. **Runner.** `gaius-codius` is a personal account, so a self-hosted runner serves one repository. Register one runner instance per repo on the runner host, each in its own directory and systemd service, with the repo name as an extra label:
 
@@ -105,15 +105,21 @@ Run these from the project's root. Replace `<project>` with the repo name and mo
    ```yaml
    remotes:
      - git_url: https://github.com/gaius-codius/go-ci
-       ref: v1
+       ref: v1.x.y   # the release your ci.yml pins
        configs:
          - lefthook/go.yml
    ```
 
-   then `lefthook install`. If lefthook can't fetch the remote (offline, wrong tag) it says "Couldn't sync" and carries on without these hooks, so check that `lefthook dump` lists them. Project-only jobs can still go in the project's `lefthook.yml` beside `remotes:`.
+   then `lefthook install`. Lefthook fetches a remote once per ref, so bump `ref` with the CI pin. It refuses to install while `core.hooksPath` is set: unset it and move those hooks into `lefthook-local.yml`, which lefthook merges and git should ignore. If lefthook can't fetch the remote (offline, wrong tag) it says "Couldn't sync" and carries on without these hooks, so check that `lefthook dump` lists them. Project-only jobs can still go in the project's `lefthook.yml` beside `remotes:`.
 
 6. **Agent guide.** Copy `templates/AGENTS-go-style.md` into `AGENTS.md`, replacing `<project>`. The Claude Code lint-on-edit hook is user-level (`~/.claude/settings.json`), so nothing per project is needed.
 
 ## Changing go-ci
 
-Tag every release `v1.x.y` and move `v1` to it. A change that would fail a project that passed before (a stricter gate, a new required input) is a new major version. `tests/test-govulncheck.sh` checks the gate's pass/fail decisions against a fake scanner; CI runs it with shellcheck.
+A release is one commit tagged `v1.x.y`:
+
+1. In `.github/workflows/go.yml`, set both `gaius-codius/go-ci/actions/...@` references to the new tag, so a project pinning this commit gets the actions from the same release. CI checks this when the tag is pushed.
+2. Commit, tag `v1.x.y`, push the tag, and move `v1` to it (a convenience for reading; projects pin SHAs).
+3. Never move or delete a `v1.x.y` tag.
+
+A change that would fail a project that passed before (a stricter gate, a new required input) is a new major version. CI runs `tests/test-govulncheck.sh` (the gate's pass/fail decisions against a fake scanner), `tests/test-drift.sh` (the drift check against a fake golangci-lint), shellcheck and actionlint.
