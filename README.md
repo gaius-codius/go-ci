@@ -120,6 +120,8 @@ A release is one commit tagged `v1.x.y`:
 
 1. In `.github/workflows/go.yml`, set both `gaius-codius/go-ci/actions/...@` references to the new tag, so a project pinning this commit gets the actions from the same release. CI checks this when the tag is pushed.
 2. Commit, tag `v1.x.y`, push the tag, and move `v1` to it (a convenience for reading; projects pin SHAs).
-3. Never move or delete a `v1.x.y` tag.
+3. Never move or delete a `v1.x.y` tag. A repository ruleset ("Release tags") rejects updates and deletions of `v1.*` tags; it doesn't cover the moving `v1` tag.
 
 A change that would fail a project that passed before (a stricter gate, a new required input) is a new major version. CI runs `tests/test-govulncheck.sh` (the gate's pass/fail decisions against a fake scanner), `tests/test-drift.sh` (the drift check against a fake golangci-lint), shellcheck and actionlint.
+
+CI also runs `go.yml` itself on every pull request, against a fixture module at this repository's root: `go.mod`, the `fixture` package (with a fuzz target), `scripts/govulncheck-allow.txt`, and symlinks to `templates/mise.toml`, `baseline/.golangci.yml` and `baseline/scripts/`, so it uses the pull request's baseline. `go.yml` calls its actions at the last release, so a separate job runs this commit's actions against the same fixture. The fixture is only for this; go-ci isn't a Go library.
