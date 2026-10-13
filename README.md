@@ -10,8 +10,9 @@ Shared quality setup for gaius-codius Go projects: one reusable CI workflow, a v
 | Lint config | `baseline/.golangci.yml` | Copied to the project root (golangci-lint can't load a remote config) |
 | Lint helper | `baseline/scripts/lint-packages.sh` | Copied to `scripts/`; the hooks call it |
 | Git hooks | `lefthook/go.yml` | Loaded through lefthook `remotes:`, pinned to a tag |
-| Toolchain pins | `templates/mise.toml` | Copied once; bump versions per project |
+| Toolchain pins | `templates/mise.toml` | Copied once; Renovate keeps them current |
 | Agent guide section | `templates/AGENTS-go-style.md` | Copied into the project's `AGENTS.md` |
+| Update policy | `renovate/go.json5` | Extended from the project's `renovate.json5` |
 
 ## What the workflow checks
 
@@ -82,7 +83,7 @@ Run these from the project's root. Replace `<project>` with the repo name and mo
            ./internal/config FuzzLoad
    ```
 
-   Pin the full commit SHA of a release tag (`git ls-remote --tags https://github.com/gaius-codius/go-ci 'v1.*'`), as for any third-party action: the workflow runs on your runner with your checkout. Dependabot's `github-actions` updates keep the pin current. The status check is then named `verify / test-vet-build`. Release jobs stay in the project and can keep `needs: verify`. Steps that only one project needs (an extra package, a service) go in a separate job in the project's `ci.yml`.
+   Pin the full commit SHA of a release tag (`git ls-remote --tags https://github.com/gaius-codius/go-ci 'v1.*'`), as for any third-party action: the workflow runs on your runner with your checkout. Renovate keeps the pin current (step 7). The status check is then named `verify / test-vet-build`. Release jobs stay in the project and can keep `needs: verify`. Steps that only one project needs (an extra package, a service) go in a separate job in the project's `ci.yml`.
 
 4. **Runner.** `gaius-codius` is a personal account, so a self-hosted runner serves one repository. Register one runner instance per repo on the runner host, each in its own directory and systemd service, with the repo name as an extra label:
 
@@ -110,9 +111,30 @@ Run these from the project's root. Replace `<project>` with the repo name and mo
          - lefthook/go.yml
    ```
 
-   then `lefthook install`. Lefthook fetches a remote once per ref, so bump `ref` with the CI pin. It refuses to install while `core.hooksPath` is set: unset it and move those hooks into `lefthook-local.yml`, which lefthook merges and git should ignore. If lefthook can't fetch the remote (offline, wrong tag) it says "Couldn't sync" and carries on without these hooks, so check that `lefthook dump` lists them. Project-only jobs can still go in the project's `lefthook.yml` beside `remotes:`.
+   then `lefthook install`. Lefthook fetches a remote once per ref, so `ref` moves with the CI pin; Renovate bumps both in one PR (step 7), after which run `lefthook install` again. It refuses to install while `core.hooksPath` is set: unset it and move those hooks into `lefthook-local.yml`, which lefthook merges and git should ignore. If lefthook can't fetch the remote (offline, wrong tag) it says "Couldn't sync" and carries on without these hooks, so check that `lefthook dump` lists them. Project-only jobs can still go in the project's `lefthook.yml` beside `remotes:`.
 
 6. **Agent guide.** Copy `templates/AGENTS-go-style.md` into `AGENTS.md`, replacing `<project>`. The Claude Code lint-on-edit hook is user-level (`~/.claude/settings.json`), so nothing per project is needed.
+
+7. **Version updates.** Delete `.github/dependabot.yml`. In the repo's settings, keep Dependabot alerts on (Renovate reads them to open security PRs outside the schedule, for indirect dependencies too) and turn Dependabot security updates off, or both bots propose the same fix. Then add `renovate.json5`:
+
+   ```json5
+   {
+     $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+     extends: ['github>gaius-codius/go-ci//renovate/go.json5'],
+   }
+   ```
+
+   Check it with `npx --yes --package renovate -- renovate-config-validator --strict --no-global renovate.json5`, then add the repo to the Renovate GitHub App's selected repositories. Renovate opens a Dependency Dashboard issue listing every dependency it found and every pending update. The preset ([`renovate/go.json5`](renovate/go.json5)) runs weekly (Monday before 04:00 UTC) and groups updates into one PR each for:
+
+   | PR | What it bumps |
+   |---|---|
+   | Go modules | `go.mod` requirements, minor and patch (each major gets its own PR, with import paths rewritten) |
+   | GitHub Actions | `uses:` pins, as commit SHAs with the version in a comment (majors in a second grouped PR) |
+   | mise tools | `mise.toml` tools other than Go (golangci-lint, govulncheck, jq, lefthook), majors included |
+   | Go toolchain | Go in `mise.toml` and the `go.mod` `toolchain` line, together, since CI requires them to match |
+   | go-ci | The `go.yml` SHA pin in `ci.yml` and the `lefthook.yml` remotes `ref`, together |
+
+   It never changes the `go` directive in `go.mod`: that is the module's minimum Go, and it moves by hand or when a dependency needs it. Project-specific rules go in the project's `renovate.json5` after `extends`.
 
 ## Changing go-ci
 
@@ -123,6 +145,8 @@ A release is one commit tagged `v1.x.y`:
 3. Never move or delete a `v1.x.y` tag. A repository ruleset ("Release tags") rejects updates and deletions of `v1.*` tags; it doesn't cover the moving `v1` tag.
 
 A branch ruleset ("main checks") requires the `self-test` and `actions` checks before anything merges into `main`. `go-workflow / test-vet-build` isn't required, because a release commit fails it until its tag exists (step 2). Any other red `go-workflow` check still needs fixing before a merge. Repository admins bypass the ruleset, which the direct release push in step 2 relies on.
+
+Projects load `renovate/go.json5` from `main`, not from a release, so a change to it applies to every project at its next Renovate run once merged, without a tag. Check it first with `npx --yes --package renovate -- renovate-config-validator --strict --no-global renovate/go.json5`. Because of that reach, change it only through a pull request, so the "main checks" ruleset above runs first.
 
 A change that would fail a project that passed before (a stricter gate, a new required input) is a new major version. CI runs `tests/test-govulncheck.sh` (the gate's pass/fail decisions against a fake scanner), `tests/test-drift.sh` (the drift check against a fake golangci-lint), shellcheck and actionlint.
 

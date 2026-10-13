@@ -1,0 +1,14 @@
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  extends: ['github>gaius-codius/go-ci//renovate/go.json5'],
+  packageRules: [
+    {
+      // go.yml calls go-ci's own actions at the tag of the release that
+      // contains it; a release sets them (README, "Changing go-ci").
+      description: "Leave go.yml's references to go-ci's own actions alone",
+      matchFileNames: ['.github/workflows/go.yml'],
+      matchPackageNames: ['gaius-codius/go-ci'],
+      enabled: false,
+    },
+  ],
+}
