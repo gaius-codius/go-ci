@@ -98,11 +98,9 @@ Run these from the project's root. Replace `<project>` with the repo name and mo
 
    The runner needs no tools installed beyond the runner itself: jdx/mise-action installs mise and the pinned tools. A GitHub-hosted runner works too: `runs-on: '["ubuntu-latest"]'` with `mise-cache: true`.
 
-   Never run a self-hosted runner for a public repository: a fork's pull request could run code on the host.
+   Never run a self-hosted runner for a public repository: a fork's pull request could run code on the host. Public projects use `ubuntu-latest`, which is free for them.
 
-5. **Access.** This repository is private. Its Settings → Actions → General → Access must be "Accessible from repositories owned by the user" (once, already done). Only private repositories can call it.
-
-6. **Git hooks.** Replace the project's `lefthook.yml` with:
+5. **Git hooks.** Replace the project's `lefthook.yml` with:
 
    ```yaml
    remotes:
@@ -112,9 +110,9 @@ Run these from the project's root. Replace `<project>` with the repo name and mo
          - lefthook/go.yml
    ```
 
-   then `lefthook install`. Cloning the remote needs git credentials for this private repo (`gh auth setup-git`). Project-only jobs can still go in the project's `lefthook.yml` beside `remotes:`.
+   then `lefthook install`. If lefthook can't fetch the remote (offline, wrong tag) it says "Couldn't sync" and carries on without these hooks, so check that `lefthook dump` lists them. Project-only jobs can still go in the project's `lefthook.yml` beside `remotes:`.
 
-7. **Agent guide.** Copy `templates/AGENTS-go-style.md` into `AGENTS.md`, replacing `<project>`. The Claude Code lint-on-edit hook is user-level (`~/.claude/settings.json`), so nothing per project is needed.
+6. **Agent guide.** Copy `templates/AGENTS-go-style.md` into `AGENTS.md`, replacing `<project>`. The Claude Code lint-on-edit hook is user-level (`~/.claude/settings.json`), so nothing per project is needed.
 
 ## Changing go-ci
 
