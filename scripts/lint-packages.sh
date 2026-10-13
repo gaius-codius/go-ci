@@ -1,0 +1,1 @@
+../baseline/scripts/lint-packages.sh
