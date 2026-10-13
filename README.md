@@ -146,7 +146,7 @@ A release is one commit tagged `v1.x.y`:
 
 A branch ruleset ("main checks") requires the `self-test` and `actions` checks before anything merges into `main`. `go-workflow / test-vet-build` isn't required, because a release commit fails it until its tag exists (step 2). Any other red `go-workflow` check still needs fixing before a merge. Repository admins bypass the ruleset, which the direct release push in step 2 relies on.
 
-Projects load `renovate/go.json5` from `main`, not from a release, so a change to it applies to every project at its next Renovate run once merged, without a tag. Check it first with `npx --yes --package renovate -- renovate-config-validator --strict --no-global renovate/go.json5`. Because of that reach, change it only through a pull request, so the "main checks" ruleset below runs first.
+Projects load `renovate/go.json5` from `main`, not from a release, so a change to it applies to every project at its next Renovate run once merged, without a tag. Check it first with `npx --yes --package renovate -- renovate-config-validator --strict --no-global renovate/go.json5`. Because of that reach, change it only through a pull request, so the "main checks" ruleset above runs first.
 
 A change that would fail a project that passed before (a stricter gate, a new required input) is a new major version. CI runs `tests/test-govulncheck.sh` (the gate's pass/fail decisions against a fake scanner), `tests/test-drift.sh` (the drift check against a fake golangci-lint), shellcheck and actionlint.
 
