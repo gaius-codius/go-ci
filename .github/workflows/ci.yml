@@ -38,3 +38,36 @@ jobs:
         run: |
           # go.yml must call its own actions at the release being tagged.
           test "$(grep -c "gaius-codius/go-ci/actions/.*@${GITHUB_REF_NAME} " .github/workflows/go.yml)" = 2
+
+  go-workflow:
+    # Runs go.yml as a project would, against the fixture module at the repository
+    # root (go.mod, fixture/, and symlinks to the baseline and templates), so a
+    # change to the workflow or the baseline runs before it's released. go.yml
+    # still calls its actions at the last release; the actions job covers this commit's.
+    uses: ./.github/workflows/go.yml
+    with:
+      runs-on: '["ubuntu-latest"]'
+      fuzz: |
+        ./fixture FuzzWords
+      fuzz-time: 3s
+      mise-cache: true
+
+  actions:
+    # This commit's composite actions against the fixture module.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Install pinned tools (mise.toml)
+        uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
+        with:
+          cache: true
+
+      - name: Compare with the go-ci baseline
+        uses: ./actions/baseline-drift
+
+      - name: Check for reachable vulnerabilities
+        uses: ./actions/govulncheck
