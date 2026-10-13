@@ -1,0 +1,72 @@
+// Shared Renovate policy for gaius-codius Go projects. A project extends it from
+// its renovate.json5:
+//   extends: ["github>gaius-codius/go-ci//renovate/go.json5"]
+// See README.md, "Adopting it", step 7.
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  description: 'gaius-codius Go projects: weekly, grouped updates for Go modules, Actions, mise tools, the Go toolchain and go-ci',
+  extends: [
+    'config:recommended',
+    ':semanticCommitTypeAll(chore)',
+    'helpers:pinGitHubActionDigests',
+    'schedule:weekly',
+  ],
+  timezone: 'Etc/UTC',
+  postUpdateOptions: ['gomodTidy', 'gomodUpdateImportPaths'],
+  customManagers: [
+    {
+      // lefthook.yml `remotes:` pin the shared hooks to a tag; keep it in step
+      // with the go-ci workflow pin (the "go-ci" group below).
+      customType: 'regex',
+      description: 'lefthook remotes ref',
+      managerFilePatterns: ['/(^|/)lefthook\\.ya?ml$/'],
+      matchStrings: [
+        'git_url:\\s*https://github\\.com/(?<depName>[\\w.-]+/[\\w.-]+?)(?:\\.git)?\\s+ref:\\s*(?<currentValue>\\S+)',
+      ],
+      datasourceTemplate: 'github-tags',
+      versioningTemplate: 'semver',
+    },
+  ],
+  packageRules: [
+    {
+      // The go directive is the module's minimum Go, a promise to users, not a
+      // pin. It moves only by hand or when a dependency needs it.
+      description: 'Leave the go directive alone',
+      matchManagers: ['gomod'],
+      matchDepTypes: ['golang'],
+      enabled: false,
+    },
+    {
+      // Majors change the import path and get a PR each.
+      description: 'Go modules: one PR for minor and patch updates',
+      matchManagers: ['gomod'],
+      matchUpdateTypes: ['minor', 'patch', 'digest'],
+      groupName: 'Go modules',
+    },
+    {
+      description: 'GitHub Actions: one PR, pinned to a commit SHA with the version in a comment',
+      matchManagers: ['github-actions'],
+      groupName: 'GitHub Actions',
+    },
+    {
+      description: 'mise tools: one PR',
+      matchManagers: ['mise'],
+      groupName: 'mise tools',
+    },
+    {
+      // CI checks that mise's Go is the Go that runs and that go.mod's
+      // toolchain line matches it, so the two move together.
+      description: 'Go: mise.toml and the go.mod toolchain line in one PR',
+      matchManagers: ['mise', 'gomod'],
+      matchDepNames: ['go'],
+      groupName: 'Go toolchain',
+    },
+    {
+      // The reusable-workflow SHA pin in ci.yml and the lefthook remotes ref
+      // name the same release.
+      description: 'go-ci: the workflow pin and the hooks ref in one PR',
+      matchPackageNames: ['gaius-codius/go-ci'],
+      groupName: 'go-ci',
+    },
+  ],
+}
