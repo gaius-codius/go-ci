@@ -136,6 +136,30 @@ Run these from the project's root. Replace `<project>` with the repo name and mo
 
    It never changes the `go` directive in `go.mod`: that is the module's minimum Go, and it moves by hand or when a dependency needs it. Project-specific rules go in the project's `renovate.json5` after `extends`.
 
+## Claude Code edit hook
+
+`agent/claude-go-lint-on-edit.sh` runs after Claude Code edits a `.go` file. In a module with `.golangci.yml` it formats the file, runs `go build ./...` and `go vet ./...` over the whole module (an edit can break callers in packages it never touched), and lints the file's package. Build and type errors are reported wherever they are; vet and lint findings only for the edited file. Findings go to stderr with exit 2, which Claude Code feeds back to the agent.
+
+It never skips silently. When the check can't run (a missing tool, a failed dependency fetch, a module with `go.mod` but no `.golangci.yml`), it exits 0 with a `PostToolUse` `additionalContext` message saying so. Non-Go files and files outside a Go module exit 0 immediately.
+
+Install once per machine, from a clone of this repo:
+
+```sh
+mkdir -p ~/.claude/hooks
+ln -sf "$GOCI/agent/claude-go-lint-on-edit.sh" ~/.claude/hooks/go-lint-on-edit.sh
+```
+
+and register it in `~/.claude/settings.json` under `hooks.PostToolUse`:
+
+```json
+{
+  "matcher": "Edit|Write|MultiEdit",
+  "hooks": [
+    { "type": "command", "command": "\"$HOME\"/.claude/hooks/go-lint-on-edit.sh", "timeout": 120 }
+  ]
+}
+```
+
 ## Changing go-ci
 
 A release is one commit tagged `v1.x.y`:
