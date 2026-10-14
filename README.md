@@ -160,6 +160,35 @@ and register it in `~/.claude/settings.json` under `hooks.PostToolUse`:
 }
 ```
 
+## Claude Code Stop hook
+
+`agent/claude-go-stop.sh` runs when Claude Code finishes a turn (`Stop`) or a subagent finishes (`SubagentStop`). If Go files changed against the merge-base with `origin/main` (or `main`), committed or not, it runs `deadcode ./...` and reports unreachable functions in the files that changed, so dead code already in the module doesn't nag. It is advisory: it never exits 2 and never blocks. It stays silent when nothing Go changed, outside a git repository or Go module, or when deadcode finds nothing in the changed files.
+
+A tool failure (deadcode missing, a crash) is reported as a failure, never as "no findings", and never skipped silently. On `Stop`, `additionalContext` makes Claude continue the turn, so each distinct report is delivered that way once. It is keyed on a hash of the checked tree (merge-base, diff, untracked files) plus the report text, kept in `go-ci-stop-hook/` under the git dir. An identical repeat goes out only as `systemMessage`, which shows to you and doesn't continue the turn, so the hook can't loop. Tests: `tests/test-stop-hook.sh`.
+
+Install once per machine, beside the edit hook:
+
+```sh
+ln -sf "$GOCI/agent/claude-go-stop.sh" ~/.claude/hooks/go-stop.sh
+```
+
+and register it in `~/.claude/settings.json` under both `hooks.Stop` and `hooks.SubagentStop`:
+
+```json
+{
+  "hooks": {
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "\"$HOME\"/.claude/hooks/go-stop.sh", "timeout": 120 }] }
+    ],
+    "SubagentStop": [
+      { "hooks": [{ "type": "command", "command": "\"$HOME\"/.claude/hooks/go-stop.sh", "timeout": 120 }] }
+    ]
+  }
+}
+```
+
+It needs `deadcode` from the project's `mise.toml` (the template pins it). deadcode only finds code unreachable from `main` packages, so a pure library reports little.
+
 ## Changing go-ci
 
 A release is one commit tagged `v1.x.y`:
@@ -172,6 +201,6 @@ A branch ruleset ("main checks") requires the `self-test` and `actions` checks b
 
 Projects load `renovate/go.json5` from `main`, not from a release, so a change to it applies to every project at its next Renovate run once merged, without a tag. Check it first with `npx --yes --package renovate -- renovate-config-validator --strict --no-global renovate/go.json5`. Because of that reach, change it only through a pull request, so the "main checks" ruleset above runs first.
 
-A change that would fail a project that passed before (a stricter gate, a new required input) is a new major version. CI runs `tests/test-govulncheck.sh` (the gate's pass/fail decisions against a fake scanner), `tests/test-drift.sh` (the drift check against a fake golangci-lint), shellcheck and actionlint.
+A change that would fail a project that passed before (a stricter gate, a new required input) is a new major version. CI runs `tests/test-govulncheck.sh` (the gate's pass/fail decisions against a fake scanner), `tests/test-drift.sh` (the drift check against a fake golangci-lint), `tests/test-hook.sh` and `tests/test-stop-hook.sh` (the Claude Code hooks against fake tools), shellcheck and actionlint.
 
 CI also runs `go.yml` itself, on pull requests and on pushes, against a fixture module at this repository's root. The fixture is `go.mod`, the `fixture` package (with a fuzz target), `scripts/govulncheck-allow.txt`, and symlinks to `templates/mise.toml`, `baseline/.golangci.yml` and `baseline/scripts/`. Lint therefore runs with the pull request's baseline config. `go.yml` calls its drift and govulncheck actions at the last release, so a pull request that changes the baseline gets a drift warning there; a separate `actions` job runs this commit's actions and gate script against the same fixture. The fixture exists only for these runs; go-ci isn't a Go library. When you bump Go in `templates/mise.toml`, change the `toolchain` line in the root `go.mod` in the same commit (`go mod edit -toolchain=go<version>`), or the pinned-Go check fails. With mise activated in your shell, run `mise trust` once in a clone, because the root `mise.toml` makes mise refuse to run there until it's trusted.
