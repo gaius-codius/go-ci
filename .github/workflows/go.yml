@@ -7,7 +7,8 @@ name: go
 #       with:
 #         runs-on: '["self-hosted","linux","x64","<project>"]'
 #         build: ./cmd/<project>/
-# Tools come from the project's mise.toml (Go, golangci-lint, govulncheck, jq).
+# Tools come from the project's mise.toml (Go, golangci-lint, govulncheck, jq,
+# and optionally shellcheck and deadcode). gopls is for editors and agents, so CI skips it.
 
 on:
   workflow_call:
@@ -36,6 +37,22 @@ on:
         description: Let jdx/mise-action cache installs. Self-hosted runners keep them on disk, so the default is off.
         type: boolean
         default: false
+      tidy-check:
+        description: Fail when go.mod or go.sum need `go mod tidy` (runs `go mod tidy -diff` before the tests).
+        type: boolean
+        default: false
+      timeout-minutes:
+        description: Job timeout. GitHub's own default is 6 hours, long enough for a hung test to hold a self-hosted runner.
+        type: number
+        default: 30
+      shellcheck:
+        description: Paths or globs of shell scripts to run `shellcheck -S warning` on, separated by spaces or newlines. Empty skips it.
+        type: string
+        default: ""
+      deadcode:
+        description: Report unreachable functions with golang.org/x/tools/cmd/deadcode (report only, never fails). Needs the tool in mise.toml.
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -44,6 +61,12 @@ jobs:
   verify:
     name: test-vet-build
     runs-on: ${{ fromJSON(inputs.runs-on) }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    env:
+      # mise builds go: tools from source, so install only what this run uses.
+      # gopls is for editors and agents. deadcode and shellcheck install on request.
+      MISE_DISABLE_TOOLS: >-
+        go:golang.org/x/tools/gopls${{ !inputs.deadcode && ',go:golang.org/x/tools/cmd/deadcode' || '' }}${{ inputs.shellcheck == '' && ',shellcheck' || '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -64,8 +87,21 @@ jobs:
       - name: Compare with the go-ci baseline
         uses: gaius-codius/go-ci/actions/baseline-drift@v1.0.2 # this release; see README "Changing go-ci"
 
-      - name: Run full test suite
-        run: go test -shuffle=on -coverprofile=coverage.out ./...
+      - name: Check go.mod and go.sum are tidy
+        if: inputs.tidy-check
+        run: go mod tidy -diff
+
+      - name: Shellcheck
+        if: inputs.shellcheck != ''
+        env:
+          SHELLCHECK_PATHS: ${{ inputs.shellcheck }}
+        run: |
+          # Unquoted on purpose: the input is a list of paths or globs.
+          # shellcheck disable=SC2086
+          shellcheck -S warning ${SHELLCHECK_PATHS}
+
+      - name: Run tests (race detector, shuffled, with coverage)
+        run: go test -race -shuffle=on -coverprofile=coverage.out ./...
 
       - name: Report coverage
         run: |
@@ -77,9 +113,6 @@ jobs:
             go tool cover -func=coverage.out | tail -n 1
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Run race detector
-        run: go test -race -shuffle=on ./...
 
       - name: Fuzz untrusted-input parsers
         if: inputs.fuzz != ''
@@ -116,3 +149,25 @@ jobs:
         env:
           BUILD: ${{ inputs.build }}
         run: go build "${BUILD:-./...}"
+
+      - name: Report unreachable code (deadcode)
+        if: inputs.deadcode
+        run: |
+          # Report only: findings and tool failures are warnings, never a failed job.
+          if ! out=$(deadcode ./... 2>&1); then
+            echo "::warning::deadcode failed, so unreachable code was not checked: ${out}"
+            exit 0
+          fi
+          if [[ -z "${out}" ]]; then
+            echo "deadcode: nothing unreachable"
+            exit 0
+          fi
+          echo "::warning::deadcode found unreachable functions (see the job summary)"
+          printf '%s\n' "${out}"
+          {
+            echo "### Unreachable code (deadcode)"
+            echo
+            echo '```'
+            printf '%s\n' "${out}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -11,6 +11,7 @@ Shared quality setup for gaius-codius Go projects: one reusable CI workflow, a v
 | Lint helper | `baseline/scripts/lint-packages.sh` | Copied to `scripts/`; the hooks call it |
 | Git hooks | `lefthook/go.yml` | Loaded through lefthook `remotes:`, pinned to a tag |
 | Toolchain pins | `templates/mise.toml` | Copied once; Renovate keeps them current |
+| gopls (language server) | `templates/mise.toml` | Pinned with the other tools so editors and agents (Claude Code's `LSP` tool) use the version the project expects; CI doesn't install it |
 | Agent guide section | `templates/AGENTS-go-style.md` | Copied into the project's `AGENTS.md` |
 | Update policy | `renovate/go.json5` | Extended from the project's `renovate.json5` |
 
@@ -20,12 +21,16 @@ In order, on the runner the caller names:
 
 1. Go from `mise.toml` is the Go that runs, and `go.mod`'s `toolchain` line matches it.
 2. Drift from this baseline (warnings only).
-3. `go test -shuffle=on` with a coverage summary in the job summary (a trend, not a gate).
-4. `go test -race -shuffle=on`.
-5. Fuzz targets, if the caller lists any, for `fuzz-time` each.
-6. `go vet`, `golangci-lint run`.
-7. The govulncheck gate: any reachable vulnerability not in the allowlist fails.
-8. `go build` of the `build` package (or `./...`).
+3. `go mod tidy -diff`, if `tidy-check` is on.
+4. `shellcheck -S warning` on the `shellcheck` paths, if any.
+5. `go test -race -shuffle=on` in one run, with a coverage summary in the job summary (a trend, not a gate).
+6. Fuzz targets, if the caller lists any, for `fuzz-time` each.
+7. `go vet`, `golangci-lint run`.
+8. The govulncheck gate: any reachable vulnerability not in the allowlist fails.
+9. `go build` of the `build` package (or `./...`).
+10. `deadcode ./...`, if `deadcode` is on: a warning and a job-summary report, never a failure.
+
+The job stops after `timeout-minutes`. The workflow tells mise to skip gopls (an editor tool, and mise builds it from source), and also deadcode and shellcheck unless their inputs are on.
 
 Inputs:
 
@@ -37,6 +42,10 @@ Inputs:
 | `fuzz-time` | `5s` | Time per fuzz target |
 | `govulncheck-allowlist` | `scripts/govulncheck-allow.txt` | Allowlist path |
 | `mise-cache` | `false` | Turn on for GitHub-hosted runners |
+| `tidy-check` | `false` | Fail when `go mod tidy -diff` finds changes |
+| `timeout-minutes` | `30` | Job timeout (GitHub's default is 6 hours) |
+| `shellcheck` | `""` (off) | Space- or newline-separated paths or globs of scripts to check; needs `shellcheck` in `mise.toml` (in the template) |
+| `deadcode` | `false` | Report unreachable functions; needs `deadcode` in `mise.toml` (in the template). Reports only, and only finds code unreachable from `main` packages |
 
 ## Adopting it
 
@@ -130,7 +139,7 @@ Run these from the project's root. Replace `<project>` with the repo name and mo
    |---|---|
    | Go modules | `go.mod` requirements, minor and patch (each major gets its own PR, with import paths rewritten) |
    | GitHub Actions | `uses:` pins, as commit SHAs with the version in a comment (majors in a second grouped PR) |
-   | mise tools | `mise.toml` tools other than Go (golangci-lint, govulncheck, jq, lefthook), majors included |
+   | mise tools | `mise.toml` tools other than Go (golangci-lint, govulncheck, deadcode, gopls, shellcheck, jq, lefthook), majors included |
    | Go toolchain | Go in `mise.toml` and the `go.mod` `toolchain` line, together, since CI requires them to match |
    | go-ci | The `go.yml` SHA pin in `ci.yml` and the `lefthook.yml` remotes `ref`, together |
 
