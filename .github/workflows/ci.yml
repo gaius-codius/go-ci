@@ -27,8 +27,11 @@ jobs:
       - name: Test the baseline drift check
         run: ./tests/test-drift.sh
 
+      - name: Test the Claude Code edit hook
+        run: ./tests/test-hook.sh
+
       - name: Shellcheck
-        run: shellcheck -S warning baseline/scripts/*.sh actions/*/*.sh tests/*.sh
+        run: shellcheck -S warning baseline/scripts/*.sh actions/*/*.sh tests/*.sh agent/*.sh
 
       - name: Actionlint
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -color
@@ -51,6 +54,10 @@ jobs:
         ./fixture FuzzWords
       fuzz-time: 3s
       mise-cache: true
+      tidy-check: true
+      timeout-minutes: 15
+      shellcheck: baseline/scripts/*.sh actions/*/*.sh tests/*.sh agent/*.sh
+      deadcode: true
 
   actions:
     # This commit's composite actions against the fixture module.
