@@ -29,7 +29,14 @@ echo 'go: downloading example.com/dep v1.0.0' >&2
 echo 'go: example.com/dep@v1.0.0: Get "https://proxy.golang.org/": dial tcp: lookup proxy.golang.org: no such host' >&2
 exit 1
 FAKE
-chmod +x "${work}/bin/golangci-lint" "${work}/failbin/go"
+# A go that can't be found (exit 127, as `run` reports a missing tool).
+mkdir -p "${work}/nogobin"
+cat >"${work}/nogobin/go" <<'FAKE'
+#!/usr/bin/env bash
+echo 'go not found (install mise and run '"'"'mise install'"'"')' >&2
+exit 127
+FAKE
+chmod +x "${work}/bin/golangci-lint" "${work}/failbin/go" "${work}/nogobin/go"
 
 failures=0
 
@@ -94,6 +101,7 @@ run_case "missing .golangci.yml names the cause" lib/lib.go 0 "predate go-ci" ""
 new_module
 FAKE_LINT_CRASH=1 run_case "lint tool crash does not block" lib/lib.go 0 "golangci-lint run failed" ""
 HOOK_PATH="${work}/failbin:${work}/bin:${PATH}" run_case "failed dependency fetch does not block" lib/lib.go 0 "go build could not run" ""
+HOOK_PATH="${work}/nogobin:${work}/bin:${PATH}" run_case "missing go does not block" lib/lib.go 0 "go build could not run (exit 127)" ""
 
 if [[ ${failures} -ne 0 ]]; then
   echo "${failures} failed"

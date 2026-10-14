@@ -82,8 +82,9 @@ findings=""
 add() { findings+="$1"$'\n'; }
 
 # Format first; a failure here is a tool problem unless the file doesn't parse.
-if ! out=$(run golangci-lint fmt "$rel" 2>&1); then
-  code=$?
+out=$(run golangci-lint fmt "$rel" 2>&1)
+code=$?
+if ((code != 0)); then
   if ((code == 127)) || ! grep -Eq '\.go:[0-9]+' <<<"$out"; then
     say "golangci-lint fmt failed (exit $code), so formatting, lint, build and vet were not run: $out"
   fi
@@ -91,8 +92,9 @@ if ! out=$(run golangci-lint fmt "$rel" 2>&1); then
 fi
 
 # Build the whole module: an edit can break callers in other packages.
-if ! out=$(run go build ./... 2>&1); then
-  code=$?
+out=$(run go build ./... 2>&1)
+code=$?
+if ((code != 0)); then
   if ((code == 127)) || tool_failed "$out"; then
     say "go build could not run (exit $code), so build, vet and lint were not run: $out"
   fi
