@@ -85,7 +85,7 @@ jobs:
           test "$(go mod edit -json | jq -r .Toolchain)" = "go$(mise current go)"
 
       - name: Compare with the go-ci baseline
-        uses: gaius-codius/go-ci/actions/baseline-drift@v1.0.2 # this release; see README "Changing go-ci"
+        uses: gaius-codius/go-ci/actions/baseline-drift@v1.1.0 # this release; see README "Changing go-ci"
 
       - name: Check go.mod and go.sum are tidy
         if: inputs.tidy-check
@@ -141,7 +141,7 @@ jobs:
         run: golangci-lint run ./...
 
       - name: Check for reachable vulnerabilities
-        uses: gaius-codius/go-ci/actions/govulncheck@v1.0.2 # this release
+        uses: gaius-codius/go-ci/actions/govulncheck@v1.1.0 # this release
         with:
           allowlist: ${{ inputs.govulncheck-allowlist }}
 
