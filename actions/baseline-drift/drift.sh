@@ -34,6 +34,14 @@ else
       warn ".golangci.yml enables different ${kind} from the baseline (added: ${added:-none}; removed: ${removed:-none})."
     fi
   done
+  # Settings the name comparison above can't see. Without ignore-package-globs,
+  # wrapcheck flags errors returned from the project's own packages.
+  if ! grep -q 'ignore-package-globs' .golangci.yml; then
+    warn ".golangci.yml has no wrapcheck ignore-package-globs, so wrapcheck flags errors returned from the project's own packages; copy the wrapcheck settings and the _test.go exclusion from go-ci baseline/.golangci.yml and set them to the project's module path."
+  fi
+  if grep -q 'gaius-codius/PROJECT' .golangci.yml; then
+    warn ".golangci.yml still contains the gaius-codius/PROJECT placeholder; set it to the project's module path (see the wrapcheck and goimports settings in go-ci baseline/.golangci.yml)."
+  fi
 fi
 
 for script in govulncheck.sh lint-packages.sh; do

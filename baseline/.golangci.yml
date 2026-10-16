@@ -9,7 +9,8 @@
 # shared workflow and the lefthook pre-commit hook run them on changed lines
 # only (--new-from-merge-base, --new-from-rev), so a project doesn't have to
 # clear its backlog first. Run them yourself with:
-#   golangci-lint run --enable-only=gocognit,nestif,wrapcheck --new-from-merge-base=main ./...
+#   golangci-lint run --enable-only=gocognit,nestif,wrapcheck --new-from-merge-base=origin/HEAD ./...
+# (or your default branch).
 version: "2"
 
 linters:
@@ -130,11 +131,18 @@ linters:
     wrapcheck:
       # Errors from the project's own packages may be returned as they are;
       # errors from other modules and the standard library get context added
-      # (with %w or %v, see errorlint above). Set to the project's module path.
+      # (with %w or %v, see errorlint above). Set both lines to the project's
+      # module path: the first covers the root package, the second its
+      # subpackages.
       ignore-package-globs:
+        - github.com/gaius-codius/PROJECT
         - github.com/gaius-codius/PROJECT/*
 
   exclusions:
+    # Only the standard "// Code generated ... DO NOT EDIT." header marks a
+    # file as generated. lax mode skips any file that mentions "do not edit",
+    # which lets one comment switch lint off for a file.
+    generated: strict
     rules:
       # Tests write temp files and fixtures; permission and path rules are noise
       # there, and tests return errors from fakes as they are.

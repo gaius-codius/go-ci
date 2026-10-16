@@ -71,7 +71,7 @@ on:
         type: boolean
         default: false
       gorelease:
-        description: Report API changes against the latest release tag with golang.org/x/exp/cmd/gorelease, for library modules (report only, never fails). Needs the tool in mise.toml.
+        description: Report API changes against the latest version the module proxy lists, with golang.org/x/exp/cmd/gorelease, for library modules (report only, never fails). Needs the tool in mise.toml.
         type: boolean
         default: false
       mutation:
@@ -123,11 +123,11 @@ jobs:
           test "$(go mod edit -json | jq -r .Toolchain)" = "go$(mise current go)"
 
       - name: Compare with the go-ci baseline
-        uses: gaius-codius/go-ci/actions/baseline-drift@v1.2.0 # this release; see README "Changing go-ci"
+        uses: gaius-codius/go-ci/actions/baseline-drift@v1.2.1 # this release; see README "Changing go-ci"
 
       - name: Flag checks switched off by this pull request
         if: github.event_name == 'pull_request'
-        uses: gaius-codius/go-ci/actions/silenced-checks@v1.2.0 # this release
+        uses: gaius-codius/go-ci/actions/silenced-checks@v1.2.1 # this release
         with:
           base: ${{ env.BASE }}
           allowlist: ${{ inputs.govulncheck-allowlist }}
@@ -137,6 +137,10 @@ jobs:
           github.event_name == 'pull_request' &&
           (inputs.dependency-review == 'true' ||
           (inputs.dependency-review == 'auto' && !github.event.repository.private))
+        # warn-only covers findings, but the action still fails on API errors
+        # (403 when the dependency graph is off or GitHub Advanced Security is
+        # missing, 404, outages), so those must not fail the job either.
+        continue-on-error: true
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
           # Report only: govulncheck is the vulnerability gate. The job summary
@@ -154,13 +158,18 @@ jobs:
         if: inputs.gorelease
         run: |
           # Report only: findings and tool failures are warnings, never a failed job.
-          if ! out=$(gorelease 2>&1); then
-            echo "::warning::gorelease failed, so API changes were not checked: ${out//$'\n'/ }"
+          # gorelease exits 1 whenever its report has diagnostics, incompatible
+          # changes included, so only output without a report is a tool failure.
+          out=$(gorelease 2>&1) && code=0 || code=$?
+          if ! grep -qE '^(# summary|## incompatible changes)' <<<"${out}"; then
+            echo "::warning::gorelease failed (exit ${code}), so API changes were not checked: ${out//$'\n'/ }"
             exit 0
           fi
           printf '%s\n' "${out}"
           if grep -q '^## incompatible changes' <<<"${out}"; then
             echo "::warning::gorelease found incompatible API changes (see the job summary)"
+          elif ((code != 0)); then
+            echo "::warning::gorelease reported problems (see the job summary)"
           fi
           {
             echo "### API changes since the last release (gorelease)"
@@ -195,7 +204,7 @@ jobs:
 
       - name: Check coverage of changed lines
         if: github.event_name == 'pull_request' && inputs.diff-coverage > 0
-        uses: gaius-codius/go-ci/actions/diff-coverage@v1.2.0 # this release
+        uses: gaius-codius/go-ci/actions/diff-coverage@v1.2.1 # this release
         with:
           base: ${{ env.BASE }}
           min: ${{ inputs.diff-coverage }}
@@ -228,12 +237,13 @@ jobs:
 
       - name: Lint changed lines (complexity, error context)
         if: github.event_name == 'pull_request' && inputs.new-code-linters != ''
-        env:
-          NEW_CODE_LINTERS: ${{ inputs.new-code-linters }}
-        run: golangci-lint run --enable-only="${NEW_CODE_LINTERS}" --new-from-merge-base="${BASE}" ./...
+        uses: gaius-codius/go-ci/actions/changed-lines-lint@v1.2.1 # this release
+        with:
+          base: ${{ env.BASE }}
+          linters: ${{ inputs.new-code-linters }}
 
       - name: Check for reachable vulnerabilities
-        uses: gaius-codius/go-ci/actions/govulncheck@v1.2.0 # this release
+        uses: gaius-codius/go-ci/actions/govulncheck@v1.2.1 # this release
         with:
           allowlist: ${{ inputs.govulncheck-allowlist }}
 
@@ -301,9 +311,15 @@ jobs:
           report="${RUNNER_TEMP}/gremlins.json"
           rm -f "${report}"
           # Timeouts scale with the coverage run; 10 times it leaves room to compile.
-          if ! out=$(gremlins unleash --timeout-coefficient=10 --output="${report}" 2>&1); then
-            echo "::warning::gremlins failed, so mutation testing did not run: ${out//$'\n'/ }"
-            exit 0
+          # With thresholds in the project's gremlins config, gremlins writes the
+          # report and then exits non-zero, so a readable report is still reported.
+          out=$(gremlins unleash --timeout-coefficient=10 --output="${report}" 2>&1) && code=0 || code=$?
+          if ((code != 0)); then
+            if ! jq -e '.test_efficacy' "${report}" >/dev/null 2>&1; then
+              echo "::warning::gremlins failed (exit ${code}), so mutation testing did not run: ${out//$'\n'/ }"
+              exit 0
+            fi
+            echo "::warning::gremlins exited ${code}: a threshold in the project's gremlins config was not met (see the job summary)"
           fi
           # gremlins writes no report when it finds nothing to mutate.
           if [[ ! -e "${report}" ]] && grep -q 'No results to report' <<<"${out}"; then
@@ -323,6 +339,10 @@ jobs:
             echo "### Mutation testing (gremlins)"
             echo
             jq -r '"Test efficacy \(.test_efficacy | floor)% (killed \(.mutants_killed), lived \(.mutants_lived)); mutant coverage \(.mutations_coverage | floor)% (\(.mutants_not_covered) not covered, \([.files[].mutations[] | select(.status == "TIMED OUT")] | length) timed out)."' "${report}"
+            if ((code != 0)); then
+              echo
+              echo "gremlins exited ${code}: a threshold in the project's gremlins config was not met."
+            fi
             if [[ -n "${lived}" ]]; then
               echo
               echo "Lived mutants: changes to the code that every test still passes with."

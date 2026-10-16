@@ -2,7 +2,10 @@ name: diff coverage
 description: >
   Fails when the share of changed Go code lines covered by tests is below a
   minimum. Warns on each uncovered range and lists them in the job summary.
-  Needs a coverage profile and the base ref's history in the checkout.
+  Needs a coverage profile and the base ref's history in the checkout. Run it
+  from the module root (the step's working directory), and keep the module at
+  the repository root: the script reads go.mod there and the diff's paths are
+  relative to the repository root, so it fails anywhere else.
 inputs:
   base:
     description: Ref to compare with; the change is base...HEAD.
