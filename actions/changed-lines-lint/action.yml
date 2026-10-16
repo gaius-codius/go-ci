@@ -1,0 +1,23 @@
+name: changed-lines lint
+description: >
+  Runs golangci-lint with only the given linters on the lines changed since the
+  merge base with base, and fails on any finding. Ignores wrapcheck findings on
+  the project's own packages and in tests, whatever the project's config says.
+  Warns and passes when there is no merge base. Needs golangci-lint, git and jq
+  on PATH; run it from the module root.
+inputs:
+  base:
+    description: Ref the change is compared with (the change is base...HEAD).
+    required: true
+  linters:
+    description: Comma-separated linters to run, e.g. gocognit,nestif,wrapcheck.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Lint changed lines
+      shell: bash
+      env:
+        BASE: ${{ inputs.base }}
+        LINTERS: ${{ inputs.linters }}
+      run: '"${GITHUB_ACTION_PATH}/changed-lines-lint.sh"'

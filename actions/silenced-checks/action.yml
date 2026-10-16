@@ -1,15 +1,17 @@
 name: silenced checks
 description: >
   Warns (never fails) about lines a change adds that switch a check off:
-  //nolint, #nosec and //lint:ignore in Go files, t.Skip in tests, changes to
-  .golangci.yml, and new govulncheck allowlist entries. Writes a job-summary
-  table for a person to review. Needs the base ref's history in the checkout.
+  //nolint, #nosec and //lint:ignore in Go files, generated-code markers in Go
+  files, t.Skip in tests, changes to or deletion of the lint config
+  (.golangci.yml, .yaml, .toml or .json), and new govulncheck allowlist
+  entries. Writes a job-summary table for a person to review. Needs the base
+  ref's history in the checkout.
 inputs:
   base:
     description: Ref to compare with; the change is base...HEAD.
     required: true
   allowlist:
-    description: govulncheck allowlist path, relative to the workspace.
+    description: govulncheck allowlist path, relative to the repository root.
     default: scripts/govulncheck-allow.txt
 runs:
   using: composite
