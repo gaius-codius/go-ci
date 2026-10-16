@@ -22,6 +22,12 @@ func TestWords(t *testing.T) {
 	}
 }
 
+func TestCountAtLeast(t *testing.T) {
+	if got := CountAtLeast(Words("a abc ab"), 2); got != 2 {
+		t.Errorf("CountAtLeast(..., 2) = %d, want 2", got)
+	}
+}
+
 // FuzzWords gives go.yml's fuzz step a target to run.
 func FuzzWords(f *testing.F) {
 	f.Add("a b\tc")
