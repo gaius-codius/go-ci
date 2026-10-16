@@ -57,6 +57,8 @@ run_case "uncovered line is warned" 0 0 "file=sub/sub.go,line=11,endLine=13,titl
 run_case "half covered passes at 50" 50 0 "3 of 6 changed code lines are covered by tests (50.0%; minimum 50%)" "::error" <<<"${two_funcs}"
 run_case "half covered fails at 80" 80 1 "below the minimum of 80%" "" <<<"${two_funcs}"
 run_case "summary lists uncovered ranges" 0 0 '- `sub/sub.go:11-13`' "" <<<"${two_funcs}"
+run_case "comments inside a function don't count" 80 0 "1 of 1 changed code lines" "" \
+  <<<"sed -i 's|^\treturn x + 1|\t// One more.\n\n\treturn x + 2 - 1|' sub/sub.go"
 run_case "test-file changes don't count" 80 0 "no changed code lines" "" \
   <<<"printf '\nfunc TestMore(t *testing.T) {}\n' >>sub/sub_test.go"
 run_case "bad minimum fails" abc 1 "must be a percentage" "" <<<":"

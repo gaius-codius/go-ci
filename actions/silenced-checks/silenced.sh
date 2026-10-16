@@ -53,7 +53,7 @@ findings="$(awk -v allow="${allowlist}" '
   {
     sign = substr($0, 1, 1); text = substr($0, 2)
     lintcfg = file ~ /(^|\/)\.golangci\.ya?ml$/
-    if (lintcfg && trim(text) != "" && trim(text) !~ /^#/) {
+    if (lintcfg && sign ~ /^[+-]$/ && trim(text) != "" && trim(text) !~ /^#/) {
       if (sign == "+") cfg_added++; else if (sign == "-") cfg_removed++
       if (cfg_text == "") cfg_text = sign " " trim(text)
     }

@@ -36,7 +36,8 @@ result="$(awk -v mod="${module}/" '
   FNR == NR {
     if ($0 ~ /^\+\+\+ /) { file = substr($0, 7); sub(/\t$/, "", file); next }
     if ($0 ~ /^@@ /) { split($3, h, ","); line = substr(h[1], 2) + 0; next }
-    if ($0 ~ /^\+/) changed[file, line++] = 1
+    # Blank and comment-only lines inside a block are not code.
+    if ($0 ~ /^\+/) { if ($0 !~ /^\+[ \t]*(\/\/.*)?$/) changed[file, line] = 1; line++ }
     next
   }
   FNR == 1 { next }
@@ -98,7 +99,8 @@ if [[ -n "${ranges}" ]]; then
 fi
 
 echo "diff coverage: ${covered} of ${total} changed code lines covered (${pct}%, minimum ${min}%)."
-if awk -v p="${pct}" -v m="${min}" 'BEGIN { exit !(p + 0 < m + 0) }'; then
+# Compare the exact ratio; pct is rounded for display only.
+if awk -v c="${covered}" -v t="${total}" -v m="${min}" 'BEGIN { exit !(100 * c < m * t) }'; then
   fail "changed code lines are ${pct}% covered, below the minimum of ${min}% (see the job summary)"
 fi
 exit 0
