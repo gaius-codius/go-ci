@@ -52,8 +52,10 @@ run_case "lint:ignore is flagged" "adds a //lint:ignore directive" "none added" 
 run_case "t.Skip is flagged" "file=p_test.go,line=6,title=silenced check::skips a test: t.Skip(" "none added" \
   <<<"sed -i 's/^}\$/\tt.Skip(\"flaky\")\n}/' p_test.go"
 run_case "t.Skip outside tests is not flagged" "none added" "skips a test" <<<"printf '// t.Skip(\"x\") in prose\n' >>p.go"
-run_case "lint config change is flagged" "changes the lint config: - wrapcheck" "none added" <<<"printf '    - wrapcheck\n' >>.golangci.yml"
-run_case "removed linter is flagged" "removes a line from the lint config: - gosec" "none added" <<<"sed -i '/gosec/d' .golangci.yml"
+run_case "lint config change is flagged" "changes the lint config (+1/-0 lines): + - wrapcheck" "none added" <<<"printf '    - wrapcheck\n' >>.golangci.yml"
+run_case "removed linter is flagged" "changes the lint config (+0/-1 lines): - - gosec" "none added" <<<"sed -i '/gosec/d' .golangci.yml"
+run_case "one lint config hunk is one finding" "file=.golangci.yml,line=5,title=silenced check::changes the lint config (+3/-0 lines)" "" \
+  <<<"printf '  exclusions:\n    rules:\n      - path: x\n' >>.golangci.yml"
 run_case "lint config comment is not flagged" "none added" "lint config" <<<"printf '# a comment\n' >>.golangci.yml"
 run_case "allowlist ID is flagged" "adds GO-2026-0001 to the govulncheck allowlist" "none added" \
   <<<"printf 'GO-2026-0001 # reason, removed by #12\n' >>scripts/govulncheck-allow.txt"
