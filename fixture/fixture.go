@@ -11,3 +11,15 @@ import "strings"
 func Words(s string) []string {
 	return strings.Fields(s)
 }
+
+// CountAtLeast returns how many of words are at least n bytes long. It gives
+// the mutation-testing step something to mutate.
+func CountAtLeast(words []string, n int) int {
+	count := 0
+	for _, w := range words {
+		if len(w) >= n {
+			count++
+		}
+	}
+	return count
+}

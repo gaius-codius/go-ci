@@ -9,6 +9,11 @@ jq = "1.8.2"
 "go:golang.org/x/tools/gopls" = "0.23.0"
 "go:golang.org/x/tools/cmd/deadcode" = "0.52.0"
 shellcheck = "0.11.0"
+# Report-only checks the workflow runs when their inputs are on (README, "What the
+# workflow checks"). nilaway and gorelease have no releases, so they pin a commit.
+"go:go.uber.org/nilaway/cmd/nilaway" = "0.0.0-20260918162853-acb8859b9031"
+"go:golang.org/x/exp/cmd/gorelease" = "0.0.0-20261014143641-f0251eb4aa3e"
+"go:github.com/go-gremlins/gremlins/cmd/gremlins" = "0.5.1"
 lefthook = "2.1.7"
 
 [env]

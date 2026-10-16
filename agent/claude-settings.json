@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "deny": [
+      "Edit(/.golangci.yml)",
+      "Edit(/scripts/govulncheck-allow.txt)"
+    ]
+  }
+}

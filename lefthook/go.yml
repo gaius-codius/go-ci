@@ -6,6 +6,12 @@ pre-commit:
       glob: "*.go"
       run: ./scripts/lint-packages.sh {staged_files}
       stage_fixed: true
+    # Complexity and error context on changed lines only, as CI checks pull
+    # requests (the linters the workflow's new-code-linters input defaults to).
+    # It compares the working tree with HEAD, so unstaged edits count too.
+    - name: lint changed lines
+      glob: "*.go"
+      run: mise exec -- golangci-lint run --enable-only=gocognit,nestif,wrapcheck --new-from-rev=HEAD ./...
 
 pre-push:
   jobs:
