@@ -1,0 +1,17 @@
+name: govulncheck gate
+description: >
+  Fails when govulncheck finds a vulnerability the project's code reaches,
+  unless its OSV ID is in the project's allowlist. Needs govulncheck and jq on PATH.
+inputs:
+  allowlist:
+    description: Allowlist path, relative to the workspace. One OSV ID per line, each with a reason.
+    default: scripts/govulncheck-allow.txt
+runs:
+  using: composite
+  steps:
+    - name: Check for reachable vulnerabilities
+      shell: bash
+      env:
+        GOVULNCHECK_ROOT: ${{ github.workspace }}
+        GOVULNCHECK_ALLOW: ${{ github.workspace }}/${{ inputs.allowlist }}
+      run: '"${GITHUB_ACTION_PATH}/../../baseline/scripts/govulncheck.sh"'

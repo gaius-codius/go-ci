@@ -1,0 +1,354 @@
+name: go
+
+# Shared Go checks. Projects call this from their own ci.yml:
+#   jobs:
+#     go:
+#       uses: gaius-codius/go-ci/.github/workflows/go.yml@<release commit SHA> # v2.x.y
+#       with:
+#         runs-on: '["self-hosted","linux","x64","<project>"]'
+#         build: ./cmd/<project>/
+# Tools come from the project's mise.toml (Go, golangci-lint, govulncheck, jq,
+# and optionally shellcheck, deadcode, nilaway, gorelease and gremlins). gopls is
+# for editors and agents, so CI skips it.
+
+on:
+  workflow_call:
+    inputs:
+      runs-on:
+        description: Runner labels as a JSON list, for example '["self-hosted","linux","x64","vigiles"]' or '["ubuntu-latest"]'.
+        type: string
+        required: true
+      build:
+        description: Package to build, for example ./cmd/vigiles/. Empty builds ./... instead.
+        type: string
+        default: ""
+      fuzz:
+        description: Fuzz targets, one "<package> <FuzzName>" per line. Empty skips fuzzing.
+        type: string
+        default: ""
+      fuzz-time:
+        description: How long each fuzz target runs.
+        type: string
+        default: 5s
+      govulncheck-allowlist:
+        description: Allowlist path, relative to the repository root.
+        type: string
+        default: scripts/govulncheck-allow.txt
+      mise-cache:
+        description: Let jdx/mise-action cache installs. Self-hosted runners keep them on disk, so the default is off.
+        type: boolean
+        default: false
+      tidy-check:
+        description: Fail when go.mod or go.sum need `go mod tidy` (runs `go mod tidy -diff` before the tests).
+        type: boolean
+        default: false
+      timeout-minutes:
+        description: Job timeout. GitHub's own default is 6 hours, long enough for a hung test to hold a self-hosted runner.
+        type: number
+        default: 30
+      shellcheck:
+        description: Paths or globs of shell scripts to run `shellcheck -S warning` on, separated by spaces or newlines. Empty skips it.
+        type: string
+        default: ""
+      deadcode:
+        description: Report unreachable functions with golang.org/x/tools/cmd/deadcode (report only, never fails). Needs the tool in mise.toml.
+        type: boolean
+        default: false
+      new-code-linters:
+        description: Linters, comma-separated, that pull requests must pass on the lines they change (golangci-lint --enable-only with --new-from-merge-base). Empty skips it.
+        type: string
+        default: gocognit,nestif,wrapcheck
+      dependency-review:
+        description: Run actions/dependency-review-action on pull requests (report only). auto runs it in public repositories; private ones need GitHub Advanced Security, so set true there only if you have it. One of auto, true, false.
+        type: string
+        default: auto
+      diff-coverage:
+        description: Minimum percentage of changed code lines a pull request must cover with tests. 0 skips it.
+        type: number
+        default: 0
+      nilaway:
+        description: Report possible nil dereferences with go.uber.org/nilaway (report only, never fails). Needs the tool in mise.toml.
+        type: boolean
+        default: false
+      gorelease:
+        description: Report API changes against the latest version the module proxy lists, with golang.org/x/exp/cmd/gorelease, for library modules (report only, never fails). Needs the tool in mise.toml.
+        type: boolean
+        default: false
+      mutation:
+        description: Run mutation testing with gremlins (report only, never fails; slow). Turn it on for scheduled or manual runs only (see the README). Needs the tool in mise.toml.
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: test-vet-build
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    env:
+      # mise builds go: tools from source, so install only what this run uses.
+      # gopls is for editors and agents. The report-only tools install on request.
+      MISE_DISABLE_TOOLS: >-
+        go:golang.org/x/tools/gopls${{ !inputs.deadcode && ',go:golang.org/x/tools/cmd/deadcode' || '' }}${{ inputs.shellcheck == '' && ',shellcheck' || '' }}${{ !inputs.nilaway && ',go:go.uber.org/nilaway/cmd/nilaway' || '' }}${{ !inputs.gorelease && ',go:golang.org/x/exp/cmd/gorelease' || '' }}${{ !inputs.mutation && ',go:github.com/go-gremlins/gremlins/cmd/gremlins' || '' }}
+      # The pull request's base branch, for the checks that look only at what it changes.
+      BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+          # Pull requests need the base branch's history for the merge base.
+          fetch-depth: ${{ github.event_name == 'pull_request' && '0' || '1' }}
+
+      - name: Check inputs
+        env:
+          DEPENDENCY_REVIEW: ${{ inputs.dependency-review }}
+        run: |
+          case "${DEPENDENCY_REVIEW}" in
+            auto | true | false) ;;
+            *) echo "::error::dependency-review is auto, true or false, got: ${DEPENDENCY_REVIEW}"; exit 1 ;;
+          esac
+
+      - name: Install pinned tools (mise.toml)
+        uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
+        with:
+          cache: ${{ inputs.mise-cache }}
+
+      - name: Check pinned Go version
+        run: |
+          test "$(go env GOVERSION)" = "go$(mise current go)"
+          # go.mod's toolchain line must match mise.toml, so builds without mise use the same Go.
+          test "$(go mod edit -json | jq -r .Toolchain)" = "go$(mise current go)"
+
+      - name: Compare with the go-ci baseline
+        uses: gaius-codius/go-ci/actions/baseline-drift@v2.0.0 # this release; see README "Releases"
+
+      - name: Flag checks switched off by this pull request
+        if: github.event_name == 'pull_request'
+        uses: gaius-codius/go-ci/actions/silenced-checks@v2.0.0 # this release
+        with:
+          base: ${{ env.BASE }}
+          allowlist: ${{ inputs.govulncheck-allowlist }}
+
+      - name: Review new dependencies
+        if: >-
+          github.event_name == 'pull_request' &&
+          (inputs.dependency-review == 'true' ||
+          (inputs.dependency-review == 'auto' && !github.event.repository.private))
+        # warn-only covers findings, but the action still fails on API errors
+        # (403 when the dependency graph is off or GitHub Advanced Security is
+        # missing, 404, outages), so those must not fail the job either.
+        continue-on-error: true
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          # Report only: govulncheck is the vulnerability gate. The job summary
+          # lists every added module with its OpenSSF Scorecard, so a misspelled
+          # or invented module stands out.
+          warn-only: true
+          show-openssf-scorecard: true
+
+      - name: Check go.mod and go.sum are tidy
+        if: inputs.tidy-check
+        run: go mod tidy -diff
+
+      - name: Report API changes (gorelease)
+        # Before the tests: gorelease refuses a tree with files they write.
+        if: inputs.gorelease
+        run: |
+          # Report only: findings and tool failures are warnings, never a failed job.
+          # gorelease exits 1 whenever its report has diagnostics, incompatible
+          # changes included, so only output without a report is a tool failure.
+          out=$(gorelease 2>&1) && code=0 || code=$?
+          if ! grep -qE '^(# summary|## incompatible changes)' <<<"${out}"; then
+            echo "::warning::gorelease failed (exit ${code}), so API changes were not checked: ${out//$'\n'/ }"
+            exit 0
+          fi
+          printf '%s\n' "${out}"
+          if grep -q '^## incompatible changes' <<<"${out}"; then
+            echo "::warning::gorelease found incompatible API changes (see the job summary)"
+          elif ((code != 0)); then
+            echo "::warning::gorelease reported problems (see the job summary)"
+          fi
+          {
+            echo "### API changes since the last release (gorelease)"
+            echo
+            echo '```'
+            printf '%s\n' "${out}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Shellcheck
+        if: inputs.shellcheck != ''
+        env:
+          SHELLCHECK_PATHS: ${{ inputs.shellcheck }}
+        run: |
+          # Unquoted on purpose: the input is a list of paths or globs.
+          # shellcheck disable=SC2086
+          shellcheck -S warning ${SHELLCHECK_PATHS}
+
+      - name: Run tests (race detector, shuffled, with coverage)
+        run: go test -race -shuffle=on -coverprofile=coverage.out ./...
+
+      - name: Report coverage
+        run: |
+          go tool cover -func=coverage.out | tail -n 1
+          {
+            echo "### Test coverage"
+            echo
+            echo '```'
+            go tool cover -func=coverage.out | tail -n 1
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check coverage of changed lines
+        if: github.event_name == 'pull_request' && inputs.diff-coverage > 0
+        uses: gaius-codius/go-ci/actions/diff-coverage@v2.0.0 # this release
+        with:
+          base: ${{ env.BASE }}
+          min: ${{ inputs.diff-coverage }}
+
+      - name: Fuzz untrusted-input parsers
+        if: inputs.fuzz != ''
+        env:
+          FUZZ_TARGETS: ${{ inputs.fuzz }}
+          FUZZ_TIME: ${{ inputs.fuzz-time }}
+        run: |
+          while read -r pkg target extra; do
+            [[ -n "${pkg}" ]] || continue
+            if [[ -z "${target}" || -n "${extra}" ]]; then
+              echo "::error::fuzz lines are '<package> <FuzzName>', got: ${pkg} ${target} ${extra}"
+              exit 1
+            fi
+            # go test passes when -fuzz matches nothing, so check the target exists first.
+            if ! go test "${pkg}" -list "^${target}\$" | grep -qx "${target}"; then
+              echo "::error::no fuzz target ${target} in ${pkg}"
+              exit 1
+            fi
+            go test "${pkg}" -run '^$' -fuzz "^${target}\$" -fuzztime="${FUZZ_TIME}"
+          done <<<"${FUZZ_TARGETS}"
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Lint
+        run: golangci-lint run ./...
+
+      - name: Lint changed lines (complexity, error context)
+        if: github.event_name == 'pull_request' && inputs.new-code-linters != ''
+        uses: gaius-codius/go-ci/actions/changed-lines-lint@v2.0.0 # this release
+        with:
+          base: ${{ env.BASE }}
+          linters: ${{ inputs.new-code-linters }}
+
+      - name: Check for reachable vulnerabilities
+        uses: gaius-codius/go-ci/actions/govulncheck@v2.0.0 # this release
+        with:
+          allowlist: ${{ inputs.govulncheck-allowlist }}
+
+      - name: Build
+        env:
+          BUILD: ${{ inputs.build }}
+        run: go build "${BUILD:-./...}"
+
+      - name: Report unreachable code (deadcode)
+        if: inputs.deadcode
+        run: |
+          # Report only: findings and tool failures are warnings, never a failed job.
+          if ! out=$(deadcode ./... 2>&1); then
+            echo "::warning::deadcode failed, so unreachable code was not checked: ${out}"
+            exit 0
+          fi
+          if [[ -z "${out}" ]]; then
+            echo "deadcode: nothing unreachable"
+            exit 0
+          fi
+          echo "::warning::deadcode found unreachable functions (see the job summary)"
+          printf '%s\n' "${out}"
+          {
+            echo "### Unreachable code (deadcode)"
+            echo
+            echo '```'
+            printf '%s\n' "${out}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Report possible nil dereferences (nilaway)
+        if: inputs.nilaway
+        run: |
+          # Report only: findings and tool failures are warnings, never a failed job.
+          # nilaway exits 3 when it reports something, other non-zero codes when it fails.
+          out=$(nilaway -pretty-print=false -include-pkgs="$(go list -m)" ./... 2>&1) && code=0 || code=$?
+          if ((code == 0)); then
+            echo "nilaway: no possible nil dereferences"
+            exit 0
+          fi
+          if ((code != 3)); then
+            echo "::warning::nilaway failed (exit ${code}), so nil dereferences were not checked: ${out//$'\n'/ }"
+            exit 0
+          fi
+          echo "::warning::nilaway found possible nil dereferences (see the job summary)"
+          printf '%s\n' "${out}"
+          {
+            echo "### Possible nil dereferences (nilaway)"
+            echo
+            echo '```'
+            printf '%s\n' "${out}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Mutation testing (gremlins)
+        if: inputs.mutation
+        run: |
+          # Report only: lived mutants and tool failures are warnings, never a failed job.
+          # gremlins 0.5 reads the module path from go.mod's first line only; with
+          # anything else there it marks every mutant "not covered".
+          if ! head -n 1 go.mod | grep -q '^module '; then
+            echo "::warning::gremlins needs the module line first in go.mod (move comments below it), so mutation testing did not run"
+            exit 0
+          fi
+          report="${RUNNER_TEMP}/gremlins.json"
+          rm -f "${report}"
+          # Timeouts scale with the coverage run; 10 times it leaves room to compile.
+          # With thresholds in the project's gremlins config, gremlins writes the
+          # report and then exits non-zero, so a readable report is still reported.
+          out=$(gremlins unleash --timeout-coefficient=10 --output="${report}" 2>&1) && code=0 || code=$?
+          if ((code != 0)); then
+            if ! jq -e '.test_efficacy' "${report}" >/dev/null 2>&1; then
+              echo "::warning::gremlins failed (exit ${code}), so mutation testing did not run: ${out//$'\n'/ }"
+              exit 0
+            fi
+            echo "::warning::gremlins exited ${code}: a threshold in the project's gremlins config was not met (see the job summary)"
+          fi
+          # gremlins writes no report when it finds nothing to mutate.
+          if [[ ! -e "${report}" ]] && grep -q 'No results to report' <<<"${out}"; then
+            echo "gremlins: no mutants in covered code"
+            exit 0
+          fi
+          if ! jq -e '.test_efficacy' "${report}" >/dev/null 2>&1; then
+            echo "::warning::gremlins wrote no readable report, so mutation testing was not checked: ${out//$'\n'/ }"
+            exit 0
+          fi
+          printf '%s\n' "${out}" | tail -n 5
+          lived=$(jq -r '.files[] | .file_name as $f | .mutations[] | select(.status == "LIVED") | "\($f):\(.line):\(.column) \(.type)"' "${report}")
+          if [[ -n "${lived}" ]]; then
+            echo "::warning::gremlins found mutants the tests don't catch (see the job summary)"
+          fi
+          {
+            echo "### Mutation testing (gremlins)"
+            echo
+            jq -r '"Test efficacy \(.test_efficacy | floor)% (killed \(.mutants_killed), lived \(.mutants_lived)); mutant coverage \(.mutations_coverage | floor)% (\(.mutants_not_covered) not covered, \([.files[].mutations[] | select(.status == "TIMED OUT")] | length) timed out)."' "${report}"
+            if ((code != 0)); then
+              echo
+              echo "gremlins exited ${code}: a threshold in the project's gremlins config was not met."
+            fi
+            if [[ -n "${lived}" ]]; then
+              echo
+              echo "Lived mutants: changes to the code that every test still passes with."
+              echo
+              echo '```'
+              printf '%s\n' "${lived}"
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

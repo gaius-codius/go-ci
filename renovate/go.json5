@@ -1,0 +1,60 @@
+// Shared Renovate policy for gaius-codius Go projects. A project extends it from
+// its renovate.json5:
+//   extends: ["github>gaius-codius/go-ci//renovate/go.json5"]
+// See README.md, "Pinning".
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  description: 'gaius-codius Go projects: weekly, grouped updates for Go modules, Actions, mise tools, the Go toolchain and the go-ci workflow pin',
+  extends: [
+    'config:recommended',
+    ':semanticCommits',
+    ':semanticCommitTypeAll(chore)',
+    // Indirect go.mod dependencies get a PR only to fix a vulnerability.
+    'security:gomodIndirectSecurityUpdates',
+    'helpers:pinGitHubActionDigests',
+    'schedule:weekly',
+  ],
+  timezone: 'Etc/UTC',
+  postUpdateOptions: ['gomodTidy', 'gomodUpdateImportPaths'],
+  packageRules: [
+    {
+      // The go directive is the module's minimum Go, a promise to users, not a
+      // pin. It moves only by hand or when a dependency needs it.
+      description: 'Leave the go directive alone',
+      matchManagers: ['gomod'],
+      matchDepTypes: ['golang'],
+      enabled: false,
+    },
+    {
+      // Majors change the import path and get a PR each.
+      description: 'Go modules: one PR for minor and patch updates',
+      matchManagers: ['gomod'],
+      matchUpdateTypes: ['minor', 'patch', 'digest'],
+      groupName: 'Go modules',
+    },
+    {
+      description: 'GitHub Actions: one PR, pinned to a commit SHA with the version in a comment',
+      matchManagers: ['github-actions'],
+      groupName: 'GitHub Actions',
+    },
+    {
+      description: 'mise tools: one PR, majors included',
+      matchManagers: ['mise'],
+      groupName: 'mise tools',
+      separateMajorMinor: false,
+    },
+    {
+      // CI checks that mise's Go is the Go that runs and that go.mod's
+      // toolchain line matches it, so the two move together.
+      description: 'Go: mise.toml and the go.mod toolchain line in one PR',
+      matchManagers: ['mise', 'gomod'],
+      matchDepNames: ['go'],
+      groupName: 'Go toolchain',
+    },
+    {
+      description: 'go-ci: the reusable-workflow SHA pin in its own PR',
+      matchPackageNames: ['gaius-codius/go-ci'],
+      groupName: 'go-ci',
+    },
+  ],
+}

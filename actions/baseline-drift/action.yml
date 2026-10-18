@@ -1,0 +1,11 @@
+name: baseline drift
+description: >
+  Warns (never fails) when the project's copies of the go-ci baseline drift:
+  a different set of enabled golangci-lint linters or formatters, or edited
+  copies of the shared scripts. Needs golangci-lint and jq on PATH.
+runs:
+  using: composite
+  steps:
+    - name: Compare with the go-ci baseline
+      shell: bash
+      run: '"${GITHUB_ACTION_PATH}/drift.sh"'

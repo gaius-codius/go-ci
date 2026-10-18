@@ -1,0 +1,167 @@
+# Baseline golangci-lint v2 configuration from gaius-codius/go-ci.
+# Copy it to the project root as .golangci.yml: golangci-lint cannot load a
+# remote config, and local runs and editors need the file.
+# Projects may add settings and exclusions with a reason. The shared workflow
+# warns when the project's enabled linters or formatters differ from this file.
+# The golangci-lint version is pinned in the project's mise.toml.
+#
+# gocognit, nestif and wrapcheck are configured below but not enabled: the
+# shared workflow and a project's pre-commit hook run them on changed lines
+# only (--new-from-merge-base, --new-from-rev), so a project doesn't have to
+# clear its backlog first. Run them yourself with:
+#   golangci-lint run --enable-only=gocognit,nestif,wrapcheck --new-from-merge-base=origin/HEAD ./...
+# (or your default branch).
+version: "2"
+
+linters:
+  # standard = errcheck, govet, ineffassign, staticcheck, unused
+  default: standard
+  enable:
+    - bodyclose # unclosed HTTP response bodies
+    - containedctx # a context.Context stored in a struct
+    - contextcheck # a new context made where the caller's should be passed on
+    - depguard # deprecated packages (see settings)
+    - errname # sentinel errors named errXxx/ErrXxx, error types XxxError
+    - errorlint # errors.Is/As instead of == and type assertions on wrapped errors
+    - exhaustive # missing cases in switches over enum-like types
+    - gocritic
+    - gosec
+    - misspell
+    - modernize # newer stdlib idioms (min/max, slices, range over int)
+    - nilerr # returning nil after checking a non-nil error
+    - noctx # HTTP requests and exec commands without a context
+    - nolintlint # every //nolint names its linter and gives a reason
+    - revive
+    - thelper # test helpers call t.Helper()
+    - unconvert
+    - unparam
+    - usetesting # t.TempDir, t.Setenv, t.Context instead of the os and context versions
+
+  settings:
+    depguard:
+      rules:
+        # Projects can add rules, for example which internal packages may
+        # import which.
+        deprecated:
+          deny:
+            - pkg: io/ioutil
+              desc: deprecated; use io and os
+            - pkg: github.com/pkg/errors
+              desc: archived; use errors and fmt.Errorf
+            - pkg: golang.org/x/net/context
+              desc: deprecated; use context
+            - pkg: golang.org/x/exp/slices
+              desc: in the standard library; use slices
+            - pkg: golang.org/x/exp/maps
+              desc: in the standard library; use maps
+            - pkg: github.com/golang/protobuf
+              desc: deprecated; use google.golang.org/protobuf
+
+    errcheck:
+      exclude-functions:
+        # Write errors to a terminal or log are not actionable.
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+
+    errorlint:
+      # Whether fmt.Errorf wraps with %w or %v is the project's policy, so the
+      # baseline doesn't check it. An app (or code under internal/) can set
+      # this to true to require %w; a library uses %w only for errors it
+      # supports as part of its API.
+      errorf: false
+
+    exhaustive:
+      # A default case counts as handling the remaining values.
+      default-signifies-exhaustive: true
+
+    # New-code linters (see the top of this file).
+    gocognit:
+      min-complexity: 30
+    nestif:
+      min-complexity: 5
+
+    # gosec:
+    #   excludes:
+    #     - G204 # only when the project runs commands with arguments by design; say why
+
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+
+    revive:
+      # Explicit list; revive's defaults include doc-comment rules that do not
+      # fit internal-only modules.
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: empty-block
+        - name: error-naming
+        - name: error-return
+        - name: error-strings
+        - name: errorf
+        - name: indent-error-flow
+        - name: range
+        - name: receiver-naming
+        - name: redefines-builtin-id
+        - name: superfluous-else
+        - name: time-naming
+        - name: unreachable-code
+        - name: var-declaration
+        - name: var-naming
+
+    thelper:
+      # Only require t.Helper() as the first statement; any parameter name and
+      # position is fine.
+      test:
+        first: false
+        name: false
+      fuzz:
+        first: false
+        name: false
+      benchmark:
+        first: false
+        name: false
+      tb:
+        first: false
+        name: false
+
+    wrapcheck:
+      # Errors from the project's own packages may be returned as they are;
+      # errors from other modules and the standard library get context added
+      # (with %w or %v, see errorlint above). Set both lines to the project's
+      # module path: the first covers the root package, the second its
+      # subpackages.
+      ignore-package-globs:
+        - github.com/gaius-codius/PROJECT
+        - github.com/gaius-codius/PROJECT/*
+
+  exclusions:
+    # Only the standard "// Code generated ... DO NOT EDIT." header marks a
+    # file as generated. lax mode skips any file that mentions "do not edit",
+    # which lets one comment switch lint off for a file.
+    generated: strict
+    rules:
+      # Tests write temp files and fixtures; permission and path rules are noise
+      # there, and tests return errors from fakes as they are.
+      - path: _test\.go
+        linters:
+          - gosec
+          - wrapcheck
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    goimports:
+      # Set to the project's module path.
+      local-prefixes:
+        - github.com/gaius-codius/PROJECT
+
+issues:
+  # Show every finding, not the first few per linter.
+  max-issues-per-linter: 0
+  max-same-issues: 0
