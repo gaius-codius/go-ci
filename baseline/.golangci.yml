@@ -56,6 +56,17 @@ linters:
               desc: in the standard library; use maps
             - pkg: github.com/golang/protobuf
               desc: deprecated; use google.golang.org/protobuf
+        # Go 1.27+ projects only (the go line in go.mod): uncomment to keep new
+        # code on the standard library. Before 1.27 there is no stdlib uuid, and
+        # encoding/json/v2 needs GOEXPERIMENT=jsonv2.
+        # go127:
+        #   deny:
+        #     - pkg: github.com/google/uuid
+        #       desc: in the standard library since Go 1.27; use uuid
+        #     - pkg: github.com/gofrs/uuid
+        #       desc: in the standard library since Go 1.27; use uuid
+        #     - pkg: github.com/go-json-experiment/json
+        #       desc: in the standard library since Go 1.27; use encoding/json/v2
 
     errcheck:
       exclude-functions:
