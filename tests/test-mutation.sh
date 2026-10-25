@@ -30,7 +30,8 @@ printf '%s\n' "${GOFLAGS-}" >"${STUB_DIR}/goflags"
 for arg in "$@"; do
   case "${arg}" in --output=*) cp "${STUB_REPORT}" "${arg#--output=}" ;; esac
 done
-echo "Gathering coverage... done in 25.9s"
+echo "Gathering coverage... go: no module dependencies to download"
+echo "done in 25.9s"
 echo "Test efficacy: whatever"
 EOF
 chmod +x "${work}/bin/gremlins"
@@ -80,7 +81,7 @@ run_case() {
 
 # The coverage run must not come from Go's test cache.
 run_case "coverage run skips the test cache" "GOFLAGS=-count=1" "" < <(report a.go:KILLED)
-run_case "logs the coverage run's time" "Gathering coverage... done in 25.9s" "" < <(report a.go:KILLED)
+run_case "logs the coverage run's time" "gremlins coverage run done in 25.9s" "" < <(report a.go:KILLED)
 run_case "keeps the project's GOFLAGS" "GOFLAGS=-mod=mod -count=1" "" GOFLAGS=-mod=mod < <(report a.go:KILLED)
 printf 'GOFLAGS=-tags=ci\n' >"${work}/goenv"
 run_case "keeps GOFLAGS set with go env -w" "GOFLAGS=-tags=ci -count=1" "" -u GOFLAGS GOENV="${work}/goenv" < <(report a.go:KILLED)

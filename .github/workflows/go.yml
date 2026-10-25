@@ -334,8 +334,9 @@ jobs:
             echo "::warning::gremlins wrote no readable report, so mutation testing was not checked: ${out//$'\n'/ }"
             exit 0
           fi
-          # The coverage run's time, which sets every mutant's timeout.
-          grep -m 1 'Gathering coverage' <<<"${out}" || true
+          # The coverage run's time, which sets every mutant's timeout. go mod
+          # download's output can split gremlins' "Gathering coverage... done in" line.
+          sed -n '/done in /{s/^.*\(done in .*\)$/gremlins coverage run \1/p;q;}' <<<"${out}"
           printf '%s\n' "${out}" | tail -n 5
           lived=$(jq -r '.files[] | .file_name as $f | .mutations[] | select(.status == "LIVED") | "\($f):\(.line):\(.column) \(.type)"' "${report}")
           if [[ -n "${lived}" ]]; then
