@@ -311,9 +311,13 @@ jobs:
           report="${RUNNER_TEMP}/gremlins.json"
           rm -f "${report}"
           # Timeouts scale with the coverage run; 10 times it leaves room to compile.
+          # -count=1 keeps that run out of Go's test cache: a cached run takes
+          # milliseconds, and then every mutant times out. `go env` keeps the
+          # project's GOFLAGS, from the environment or `go env -w`.
+          goflags=$(go env GOFLAGS)
           # With thresholds in the project's gremlins config, gremlins writes the
           # report and then exits non-zero, so a readable report is still reported.
-          out=$(gremlins unleash --timeout-coefficient=10 --output="${report}" 2>&1) && code=0 || code=$?
+          out=$(GOFLAGS="${goflags:+${goflags} }-count=1" gremlins unleash --timeout-coefficient=10 --output="${report}" 2>&1) && code=0 || code=$?
           if ((code != 0)); then
             if ! jq -e '.test_efficacy' "${report}" >/dev/null 2>&1; then
               echo "::warning::gremlins failed (exit ${code}), so mutation testing did not run: ${out//$'\n'/ }"
@@ -330,14 +334,35 @@ jobs:
             echo "::warning::gremlins wrote no readable report, so mutation testing was not checked: ${out//$'\n'/ }"
             exit 0
           fi
+          # The coverage run's time, which sets every mutant's timeout. go mod
+          # download's output can split gremlins' "Gathering coverage... done in" line.
+          sed -n '/done in /{s/^.*\(done in .*\)$/gremlins coverage run \1/p;q;}' <<<"${out}"
           printf '%s\n' "${out}" | tail -n 5
           lived=$(jq -r '.files[] | .file_name as $f | .mutations[] | select(.status == "LIVED") | "\($f):\(.line):\(.column) \(.type)"' "${report}")
           if [[ -n "${lived}" ]]; then
             echo "::warning::gremlins found mutants the tests don't catch (see the job summary)"
           fi
+          # Efficacy is killed / (killed + lived) and leaves timeouts out, so a package
+          # where most mutants timed out reads as well tested without being measured
+          # (a cached coverage run did that).
+          timed_out=$(jq -r '[.files[] | {pkg: (.file_name | if test("/") then sub("/[^/]*$"; "") else "." end), status: .mutations[].status}
+            | select(.status == "KILLED" or .status == "LIVED" or .status == "TIMED OUT")]
+            | group_by(.pkg)[] | {pkg: .[0].pkg, run: length, out: (map(select(.status == "TIMED OUT")) | length)}
+            | select(.out * 2 > .run) | "\(.pkg) (\(.out) of \(.run))"' "${report}")
+          if [[ -n "${timed_out}" ]]; then
+            echo "::warning::most mutants timed out in: ${timed_out//$'\n'/, }; their efficacy is not measured (see the job summary)"
+          fi
           {
             echo "### Mutation testing (gremlins)"
             echo
+            if [[ -n "${timed_out}" ]]; then
+              echo "**Warning:** most mutants timed out in these packages (timed out of run), so the efficacy below doesn't measure them."
+              echo
+              echo '```'
+              printf '%s\n' "${timed_out}"
+              echo '```'
+              echo
+            fi
             jq -r '"Test efficacy \(.test_efficacy | floor)% (killed \(.mutants_killed), lived \(.mutants_lived)); mutant coverage \(.mutations_coverage | floor)% (\(.mutants_not_covered) not covered, \([.files[].mutations[] | select(.status == "TIMED OUT")] | length) timed out)."' "${report}"
             if ((code != 0)); then
               echo

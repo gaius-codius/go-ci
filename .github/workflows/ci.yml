@@ -36,6 +36,9 @@ jobs:
       - name: Test the changed-lines lint
         run: ./tests/test-changed-lines-lint.sh
 
+      - name: Test the mutation step
+        run: ./tests/test-mutation.sh
+
       - name: Shellcheck
         run: shellcheck -S warning baseline/scripts/*.sh actions/*/*.sh tests/*.sh
 
