@@ -123,11 +123,11 @@ jobs:
           test "$(go mod edit -json | jq -r .Toolchain)" = "go$(mise current go)"
 
       - name: Compare with the go-ci baseline
-        uses: gaius-codius/go-ci/actions/baseline-drift@v2.0.0 # this release; see README "Releases"
+        uses: gaius-codius/go-ci/actions/baseline-drift@v2.1.0 # this release; see README "Releases"
 
       - name: Flag checks switched off by this pull request
         if: github.event_name == 'pull_request'
-        uses: gaius-codius/go-ci/actions/silenced-checks@v2.0.0 # this release
+        uses: gaius-codius/go-ci/actions/silenced-checks@v2.1.0 # this release
         with:
           base: ${{ env.BASE }}
           allowlist: ${{ inputs.govulncheck-allowlist }}
@@ -204,7 +204,7 @@ jobs:
 
       - name: Check coverage of changed lines
         if: github.event_name == 'pull_request' && inputs.diff-coverage > 0
-        uses: gaius-codius/go-ci/actions/diff-coverage@v2.0.0 # this release
+        uses: gaius-codius/go-ci/actions/diff-coverage@v2.1.0 # this release
         with:
           base: ${{ env.BASE }}
           min: ${{ inputs.diff-coverage }}
@@ -237,13 +237,13 @@ jobs:
 
       - name: Lint changed lines (complexity, error context)
         if: github.event_name == 'pull_request' && inputs.new-code-linters != ''
-        uses: gaius-codius/go-ci/actions/changed-lines-lint@v2.0.0 # this release
+        uses: gaius-codius/go-ci/actions/changed-lines-lint@v2.1.0 # this release
         with:
           base: ${{ env.BASE }}
           linters: ${{ inputs.new-code-linters }}
 
       - name: Check for reachable vulnerabilities
-        uses: gaius-codius/go-ci/actions/govulncheck@v2.0.0 # this release
+        uses: gaius-codius/go-ci/actions/govulncheck@v2.1.0 # this release
         with:
           allowlist: ${{ inputs.govulncheck-allowlist }}
 
