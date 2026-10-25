@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Tests the "Mutation testing (gremlins)" step of .github/workflows/go.yml: takes
 # the step's script out of the workflow and runs it with a stub gremlins that
-# records its GOFLAGS and writes a given report. Needs bash, awk and jq.
+# records its GOFLAGS and writes a given report. Needs bash, awk, jq and go.
 set -uo pipefail
 
 src_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -30,6 +30,7 @@ printf '%s\n' "${GOFLAGS-}" >"${STUB_DIR}/goflags"
 for arg in "$@"; do
   case "${arg}" in --output=*) cp "${STUB_REPORT}" "${arg#--output=}" ;; esac
 done
+echo "Gathering coverage... done in 25.9s"
 echo "Test efficacy: whatever"
 EOF
 chmod +x "${work}/bin/gremlins"
@@ -59,7 +60,7 @@ run_case() {
   cat >report.json
   out="$(PATH="${work}/bin:${PATH}" STUB_DIR="${work}/case" STUB_REPORT="${work}/case/report.json" \
     RUNNER_TEMP="${work}/case/tmp" GITHUB_STEP_SUMMARY="${work}/case/summary" \
-    env "$@" bash --noprofile --norc -eo pipefail "${work}/step.sh" 2>&1)"
+    env -u GOFLAGS "$@" bash --noprofile --norc -eo pipefail "${work}/step.sh" 2>&1)"
   code=$?
   out+=$'\n'"GOFLAGS=$(cat goflags 2>/dev/null)"
   [[ -f summary ]] && out+=$'\n'"$(cat summary)"
@@ -79,7 +80,10 @@ run_case() {
 
 # The coverage run must not come from Go's test cache.
 run_case "coverage run skips the test cache" "GOFLAGS=-count=1" "" < <(report a.go:KILLED)
+run_case "logs the coverage run's time" "Gathering coverage... done in 25.9s" "" < <(report a.go:KILLED)
 run_case "keeps the project's GOFLAGS" "GOFLAGS=-mod=mod -count=1" "" GOFLAGS=-mod=mod < <(report a.go:KILLED)
+printf 'GOFLAGS=-tags=ci\n' >"${work}/goenv"
+run_case "keeps GOFLAGS set with go env -w" "GOFLAGS=-tags=ci -count=1" "" -u GOFLAGS GOENV="${work}/goenv" < <(report a.go:KILLED)
 
 # Most runnable mutants of a package timed out: a warning, naming the package.
 run_case "all timed out warns" "::warning::most mutants timed out in: internal/serve (2 of 2);" "internal/store (" \

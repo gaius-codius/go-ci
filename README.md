@@ -52,7 +52,7 @@ Tools come from the project's `mise.toml` (Go, golangci-lint, govulncheck, jq, a
 | `diff-coverage` | `0` (off) | Minimum percentage of changed code lines covered by tests |
 | `nilaway` | `false` | Report possible nil dereferences; needs `nilaway` in `mise.toml` |
 | `gorelease` | `false` | Report API changes for a library module; needs `gorelease` in `mise.toml` |
-| `mutation` | `false` | Run gremlins mutation testing; slow, so turn it on for scheduled or manual runs only; needs `gremlins` in `mise.toml`. Its coverage run bypasses Go's test cache, and it warns when most of a package's mutants time out |
+| `mutation` | `false` | Run gremlins mutation testing; slow, so turn it on for scheduled or manual runs only; needs `gremlins` in `mise.toml`. Its coverage run bypasses Go's test cache, and it warns when most of a package's tested mutants (killed, lived or timed out) time out |
 
 ## Pinning
 
