@@ -311,9 +311,11 @@ jobs:
           report="${RUNNER_TEMP}/gremlins.json"
           rm -f "${report}"
           # Timeouts scale with the coverage run; 10 times it leaves room to compile.
+          # -count=1 keeps that run out of Go's test cache: a cached run takes
+          # milliseconds, and then every mutant times out.
           # With thresholds in the project's gremlins config, gremlins writes the
           # report and then exits non-zero, so a readable report is still reported.
-          out=$(gremlins unleash --timeout-coefficient=10 --output="${report}" 2>&1) && code=0 || code=$?
+          out=$(GOFLAGS="${GOFLAGS:+${GOFLAGS} }-count=1" gremlins unleash --timeout-coefficient=10 --output="${report}" 2>&1) && code=0 || code=$?
           if ((code != 0)); then
             if ! jq -e '.test_efficacy' "${report}" >/dev/null 2>&1; then
               echo "::warning::gremlins failed (exit ${code}), so mutation testing did not run: ${out//$'\n'/ }"
@@ -335,6 +337,15 @@ jobs:
           if [[ -n "${lived}" ]]; then
             echo "::warning::gremlins found mutants the tests don't catch (see the job summary)"
           fi
+          # Timeouts count as killed, so a package where most mutants timed out reads
+          # as well tested without being measured (a cached coverage run did that).
+          timed_out=$(jq -r '[.files[] | {pkg: (.file_name | if test("/") then sub("/[^/]*$"; "") else "." end), status: .mutations[].status}
+            | select(.status == "KILLED" or .status == "LIVED" or .status == "TIMED OUT")]
+            | group_by(.pkg)[] | {pkg: .[0].pkg, run: length, out: (map(select(.status == "TIMED OUT")) | length)}
+            | select(.out * 2 > .run) | "\(.pkg) (\(.out) of \(.run))"' "${report}")
+          if [[ -n "${timed_out}" ]]; then
+            echo "::warning::most mutants timed out in: ${timed_out//$'\n'/, }; their efficacy is not measured (see the job summary)"
+          fi
           {
             echo "### Mutation testing (gremlins)"
             echo
@@ -342,6 +353,14 @@ jobs:
             if ((code != 0)); then
               echo
               echo "gremlins exited ${code}: a threshold in the project's gremlins config was not met."
+            fi
+            if [[ -n "${timed_out}" ]]; then
+              echo
+              echo "**Warning:** most mutants timed out in these packages (timed out of run), so the efficacy above doesn't measure them."
+              echo
+              echo '```'
+              printf '%s\n' "${timed_out}"
+              echo '```'
             fi
             if [[ -n "${lived}" ]]; then
               echo
