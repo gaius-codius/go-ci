@@ -71,6 +71,8 @@ The preset loads from `main`, not from a release.
 
 When Renovate bumps go-ci, compare `baseline/.golangci.yml` between the old and new tags and merge its changes (new linters, wrapcheck settings, exclusions) into the project's `.golangci.yml`; the project's copy doesn't update itself. The drift check warns when the enabled linters differ, the wrapcheck settings are missing, or the `PROJECT` placeholder is left in.
 
+Copy `baseline/scripts/` over the project's `scripts/` again too: `lint-packages.sh` and `govulncheck.sh` are copies, and a release may fix them (v2.1.1 makes `lint-packages.sh` work with macOS's `realpath`).
+
 ## Releases
 
 A release is one commit tagged `vX.Y.Z`:
