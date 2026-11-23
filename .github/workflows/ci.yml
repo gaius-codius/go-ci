@@ -39,6 +39,9 @@ jobs:
       - name: Test the mutation step
         run: ./tests/test-mutation.sh
 
+      - name: Test the lint helper
+        run: ./tests/test-lint-packages.sh
+
       - name: Shellcheck
         run: shellcheck -S warning baseline/scripts/*.sh actions/*/*.sh tests/*.sh
 
